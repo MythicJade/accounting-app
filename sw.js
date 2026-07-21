@@ -1,5 +1,5 @@
 /* PWA Cache shell */
-const CACHE_NAME = 'accounting-v5';
+const CACHE_NAME = 'accounting-v6';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const PRECACHE_URLS = [
   './js/views/budget.js',
   './js/views/settings.js',
   './js/views/accounts.js',
+  './js/views/categories.js',
   './js/charts/pie-chart.js',
   './js/charts/line-chart.js',
   './icons/icon-192.png',

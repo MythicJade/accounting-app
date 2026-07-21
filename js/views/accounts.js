@@ -43,6 +43,8 @@ export async function renderAccounts(mount) {
     accounts.forEach(acc => {
       const bal = balances.get(acc.id) || 0;
       const balClass = bal < 0 ? 'expense' : '';
+      const opening = acc.openingBalance ? Number(acc.openingBalance) : 0;
+      const openingLabel = opening !== 0 ? ('期初: ' + formatMoney(opening) + ' · ' + (acc.builtin ? '内置' : '自定义')) : (acc.builtin ? '内置账户' : '自定义');
       const item = el('div', { class: 'list-item account-item', onclick: () => onEdit(acc) }, [
         el('div', { class: 'icon', style: `background:${acc.color}22;color:${acc.color}` }, [document.createTextNode(acc.icon)]),
         el('div', { class: 'meta' }, [
@@ -51,11 +53,11 @@ export async function renderAccounts(mount) {
             el('span', { class: 'amount ' + balClass, text: formatMoney(bal) })
           ]),
           el('div', { class: 'between text-sm text-3' }, [
-            el('span', { text: acc.builtin ? '内置账户' : '自定义' }),
+            el('span', { text: openingLabel }),
             el('span', { text: '›' })
           ])
         ])
-      ]);
+      });
       listEl.appendChild(item);
     });
   }
@@ -77,9 +79,11 @@ export async function renderAccounts(mount) {
     const form = el('div', { style: 'font-size:14px;' });
 
     const nameInput = el('input', { class: 'input', type: 'text', placeholder: '账户名称', value: acc ? acc.name : '', maxlength: 12 });
-    const icons = ['💵','💳','💙','💚','💛','🏦','📱','💰','📈','🏠'];
+    // 期初余额输入：仅创建/编辑账户时设置（不影响流水计算逻辑中的余额公式）
+    const openingInput = el('input', { class: 'input', type: 'number', placeholder: '0.00', step: '0.01', value: (acc && acc.openingBalance != null) ? acc.openingBalance : '' });
+    const icons = ['💵','💳','💙','💚','💛','🏦','📱','💰','📈','🏠','👛','💎'];
     let selectedIcon = acc ? acc.icon : '💰';
-    const colors = ['#52C41A','#1677FF','#07C160','#722ED1','#FA8C16','#FF6B6B','#13C2C2','#868E96'];
+    const colors = ['#52C41A','#1677FF','#07C160','#722ED1','#FA8C16','#FF6B6B','#13C2C2','#868E96','#FAAD14','#EB2F96'];
     let selectedColor = acc ? acc.color : '#868E96';
 
     const iconGrid = el('div', { class: 'cat-grid', style: 'margin:8px 0;' });
@@ -108,6 +112,8 @@ export async function renderAccounts(mount) {
     form.append(
       el('label', { class: 'field', style: 'display:block;margin-bottom:8px;', text: '账户名称' }),
       nameInput,
+      el('label', { class: 'text-sm text-2', style: 'display:block;margin:12px 0 4px;', text: '期初余额（创建账户时的初始金额，可填负数表示欠款）' }),
+      openingInput,
       el('div', { class: 'text-sm text-2 mt-8', style: 'margin:12px 0 4px;', text: '选择图标' }),
       iconGrid,
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择颜色' }),
@@ -119,7 +125,8 @@ export async function renderAccounts(mount) {
       body: form,
       actions: [
         { label: '取消', type: 'ghost', value: 'cancel' },
-        ...(isEdit && !acc.builtin ? [{ label: '删除', type: 'danger', value: 'delete' }] : []),
+        // 默认为空后，所有账户均可删除（builtin 仅为兼容历史数据）
+        ...(isEdit ? [{ label: '删除', type: 'danger', value: 'delete' }] : []),
         { label: '保存', type: 'primary', value: 'save', onClick: () => {
           if (!nameInput.value.trim()) { toast('请输入账户名称'); return false; }
         } }
@@ -127,10 +134,12 @@ export async function renderAccounts(mount) {
     });
 
     if (result === 'save') {
+      const openingBal = openingInput.value === '' ? 0 : (parseFloat(openingInput.value) || 0);
       const payload = {
         name: nameInput.value.trim(),
         icon: selectedIcon,
-        color: selectedColor
+        color: selectedColor,
+        openingBalance: openingBal
       };
       try {
         if (isEdit) {

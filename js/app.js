@@ -8,6 +8,7 @@ import { renderStats } from './views/stats.js';
 import { renderBudget } from './views/budget.js';
 import { renderSettings } from './views/settings.js';
 import { renderAccounts } from './views/accounts.js';
+import { renderCategories } from './views/categories.js';
 
 // Make toast globally accessible for convenience (used by some inline handlers)
 window.toast = toast;
@@ -19,6 +20,7 @@ router.register('/stats', renderStats);
 router.register('/budget', renderBudget);
 router.register('/settings', renderSettings);
 router.register('/accounts', renderAccounts);
+router.register('/categories', renderCategories);
 
 // Floating + button
 document.getElementById('fab-add').addEventListener('click', () => {

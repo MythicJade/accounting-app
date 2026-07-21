@@ -26,7 +26,7 @@ export async function renderAddTransaction(mount, params = {}) {
     categoryId: editing ? editing.categoryId : null,
     note: editing ? editing.note : '',
     date: editing ? editing.date : todayStr(),
-    accountId: editing ? editing.accountId : (allAccounts[0] ? allAccounts[0].id : 'cash'),
+    accountId: editing ? editing.accountId : (allAccounts[0] ? allAccounts[0].id : null),
     toAccountId: editing ? editing.toAccountId : (allAccounts[1] ? allAccounts[1].id : null)
   };
 
@@ -61,6 +61,14 @@ export async function renderAddTransaction(mount, params = {}) {
   const catGrid = el('div', { class: 'cat-grid' });
   function renderCats() {
     catGrid.innerHTML = '';
+    if (cats.length === 0) {
+      const empty = el('div', { class: 'empty', style: 'grid-column:1/-1;padding:16px 8px;' }, [
+        el('p', { text: '暂无' + (state.type === 'income' ? '收入' : '支出') + '分类' }),
+        el('button', { class: 'btn', style: 'margin-top:8px;background:var(--c-primary);color:#fff;', onclick: () => location.hash = '#/categories' }, [el('span', { text: '去创建分类' })])
+      ]);
+      catGrid.appendChild(empty);
+      return;
+    }
     cats.forEach(c => {
       const item = el('div', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), onclick: () => selectCat(c.id) }, [
         el('div', { class: 'cat-icon', style: `background:${c.color}22;color:${c.color}` }, [document.createTextNode(c.icon)]),
@@ -68,6 +76,12 @@ export async function renderAddTransaction(mount, params = {}) {
       ]);
       catGrid.appendChild(item);
     });
+    // 末尾追加一个"+"按钮，便于跳转到分类管理
+    const addBtn = el('div', { class: 'cat-item', onclick: () => location.hash = '#/categories' }, [
+      el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#999;border:2px dashed #ccc;' }, [document.createTextNode('+')]),
+      el('div', { class: 'cat-name', text: '管理' })
+    ]);
+    catGrid.appendChild(addBtn);
   }
   renderCats();
   const catCard = el('section', { class: 'card' }, [catGrid]);
@@ -103,12 +117,17 @@ export async function renderAddTransaction(mount, params = {}) {
   allAccounts.forEach(a => {
     accountSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
   });
-  accountSelect.value = state.accountId;
+  accountSelect.value = state.accountId || '';
   accountSelect.addEventListener('change', (e) => { state.accountId = e.target.value; });
 
   const accountField = el('div', { class: 'field' }, [
     el('label', { text: '账户' }),
-    accountSelect
+    allAccounts.length === 0
+      ? el('div', { style: 'display:flex;gap:8px;align-items:center;' }, [
+          el('span', { class: 'text-sm text-3', text: '暂无账户' }),
+          el('button', { class: 'btn', style: 'background:var(--c-primary);color:#fff;padding:4px 10px;font-size:13px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
+        ])
+      : accountSelect
   ]);
 
   // Note + Date

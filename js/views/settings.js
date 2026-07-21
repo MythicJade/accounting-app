@@ -1,6 +1,6 @@
 // js/views/settings.js — settings: export/import/clear + about
 import { exportAll, importAll, clearAllData, countTransactions } from '../store.js';
-import { exportToExcel, importFromExcel } from '../excel-io.js';
+import { exportToExcel, previewExcelImport, importParsedData } from '../excel-io.js';
 import { toast, confirmDialog, showModal, el } from '../ui.js';
 import { router } from '../router.js';
 
@@ -18,6 +18,14 @@ export async function renderSettings(mount) {
       el('div', { class: 'text' }, [
         el('div', { text: '账户管理' }),
         el('div', { class: 'text-sm text-3', text: '多账户分开管理 + 账户间转账' })
+      ]),
+      el('div', { class: 'arrow', text: '›' })
+    ]),
+    el('div', { class: 'setting-item', onclick: () => location.hash = '#/categories' }, [
+      el('div', { class: 'icon', text: '🏷️' }),
+      el('div', { class: 'text' }, [
+        el('div', { text: '分类管理' }),
+        el('div', { class: 'text-sm text-3', text: '自定义支出/收入分类、图标与颜色' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
@@ -140,20 +148,25 @@ export async function renderSettings(mount) {
     if (!file) return;
     try {
       const sizeKB = Math.round(file.size / 1024);
-      const ok = await confirmDialog(
-        '即将导入文件：' + file.name + '（' + sizeKB + ' KB）\n\n' +
-        '选择导入模式：\n"合并"将追加到现有数据，"替换"将先清空再导入。',
-        { okText: '合并导入', cancelText: '取消' }
-      );
-      if (!ok) { excelInput.value = ''; return; }
-      const result = await importFromExcel(file, 'merge');
+      // Phase 1: 预扫描
+      toast('正在解析 Excel...');
+      const preview = await previewExcelImport(file);
+
+      // Phase 2: 显示预览，让用户输入期初余额
+      const proceed = await showImportPreview(file, sizeKB, preview);
+      if (!proceed) { excelInput.value = ''; return; }
+
+      // Phase 3: 实际导入
+      const result = await importParsedData(preview, { mode: 'merge', openingBalances: proceed.openingBalances });
       await showModal({
         title: '导入完成',
         body: el('div', { style: 'font-size:14px;line-height:1.8;' }, [
           el('div', { text: '工作表：' + result.sheetName }),
           el('div', { text: '总行数：' + result.total }),
           el('div', { text: '成功导入：' + result.imported + ' 条' }),
-          el('div', { text: '跳过：' + result.skipped + ' 条（金额无效或空行）' })
+          el('div', { text: '跳过：' + result.skipped + ' 条（金额无效或空行）' }),
+          el('div', { text: '新增账户：' + (result.newAccounts || 0) + ' 个', style: 'margin-top:6px;color:var(--c-primary);' }),
+          el('div', { text: '新增分类：' + (result.newCategories || 0) + ' 个', style: 'color:var(--c-primary);' })
         ]),
         actions: [{ label: '完成', type: 'primary' }]
       });
@@ -165,6 +178,82 @@ export async function renderSettings(mount) {
     excelInput.value = '';
   });
   mount.appendChild(excelInput);
+
+  // 显示导入预览，让用户确认并输入各账户期初余额
+  // 返回 { openingBalances: Map<name, number> } 表示继续；返回 null 表示取消
+  async function showImportPreview(file, sizeKB, preview) {
+    const form = el('div', { style: 'font-size:14px;line-height:1.6;' });
+
+    form.appendChild(el('div', { style: 'color:var(--text-2);margin-bottom:8px;' }, [
+      el('span', { text: '文件：' + file.name + '（' + sizeKB + ' KB）' })
+    ]));
+    form.appendChild(el('div', { style: 'color:var(--text-2);margin-bottom:8px;' }, [
+      el('span', { text: '工作表：' + preview.sheetName + ' · 共 ' + preview.totalRows + ' 行（其中有效 ' + preview.parsedRows.length + ' 条）' })
+    ]));
+
+    // 账户预览 + 期初余额输入
+    const balInputs = [];
+    const openingBalances = new Map();
+    if (preview.detectedAccounts.length > 0) {
+      form.appendChild(el('div', { style: 'margin:14px 0 6px;font-weight:600;' }, [el('span', { text: '💳 检测到的账户' })]));
+      form.appendChild(el('div', { style: 'color:var(--text-3);font-size:12px;margin-bottom:6px;' }, [
+        el('span', { text: '可输入各账户当前余额（期初余额），导入后作为账户初始余额。已存在账户保留原值。' })
+      ]));
+      preview.detectedAccounts.forEach((acc) => {
+        const cur = acc.currentOpening != null ? Number(acc.currentOpening) : 0;
+        const row = el('div', { style: 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;' });
+        const label = el('div', { style: 'flex:1;' }, [
+          el('div', { text: acc.name + (acc.exists ? '' : ' (新建)') }),
+          el('div', { class: 'text-sm text-3', text: acc.exists ? '已存在账户' : '将自动创建' })
+        ]);
+        const input = el('input', { type: 'number', step: '0.01', placeholder: '0.00', value: cur !== 0 ? String(cur) : '', style: 'width:110px;text-align:right;' });
+        input.className = 'input';
+        balInputs.push({ name: acc.name, input });
+        row.append(label, input);
+        form.appendChild(row);
+      });
+    }
+
+    // 分类预览（只读，导入时自动同步）
+    const newCats = preview.detectedCategories.filter(c => !c.exists);
+    if (preview.detectedCategories.length > 0) {
+      form.appendChild(el('div', { style: 'margin:14px 0 6px;font-weight:600;' }, [el('span', { text: '🏷️ 检测到的分类' })]));
+      if (newCats.length > 0) {
+        form.appendChild(el('div', { style: 'color:var(--text-3);font-size:12px;margin-bottom:6px;' }, [
+          el('span', { text: '以下 ' + newCats.length + ' 个新分类将自动创建（其余已存在）：' })
+        ]));
+        const catList = el('div', { style: 'font-size:13px;color:var(--text-2);max-height:120px;overflow-y:auto;' });
+        newCats.forEach(c => {
+          catList.appendChild(el('div', { text: '• ' + (c.type === 'income' ? '收入' : '支出') + ' / ' + c.name }));
+        });
+        form.appendChild(catList);
+      } else {
+        form.appendChild(el('div', { style: 'color:var(--text-3);font-size:13px;' }, [
+          el('span', { text: '所有分类均已存在，无需新建。' })
+        ]));
+      }
+    }
+
+    const result = await showModal({
+      title: '导入预览',
+      body: form,
+      actions: [
+        { label: '取消', type: 'ghost', value: 'cancel' },
+        { label: '确认导入', type: 'primary', value: 'ok' }
+      ]
+    });
+
+    if (result !== 'ok') return null;
+
+    // 收集期初余额
+    for (const { name, input } of balInputs) {
+      const v = input.value.trim();
+      if (v !== '') {
+        openingBalances.set(name, parseFloat(v) || 0);
+      }
+    }
+    return { openingBalances };
+  }
 
   async function onExportExcel() {
     try {
@@ -208,7 +297,8 @@ export async function renderSettings(mount) {
         <li>系统会自动查找包含"记账日期"表头的工作表</li>
         <li>列名会模糊匹配（如"记账时间（可不填）"会匹配"记账时间"）</li>
         <li>账户不存在会自动创建（自定义类型）</li>
-        <li>分类不存在会显示为"未分类"，不会阻断导入</li>
+        <li>分类不存在会自动创建（按支出/收入类型，默认图标颜色可后续修改）</li>
+        <li>导入前可预览账户与分类，并输入各账户当前余额作为初始余额</li>
         <li>日期格式支持多种：YYYY-MM-DD / YYYY/MM/DD / Excel 序列号</li>
       </ul>
       <p style="margin-top:12px;color:var(--text-3);font-size:12px;">提示：导入前建议先"导出 Excel"备份当前数据。</p>

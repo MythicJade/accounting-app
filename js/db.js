@@ -1,6 +1,6 @@
 // js/db.js — IndexedDB thin wrapper (Promise based)
 const DB_NAME = 'accounting-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const STORE_TRANSACTIONS = 'transactions';
 const STORE_BUDGETS = 'budgets';
@@ -39,6 +39,22 @@ export function openDB() {
       if (!db.objectStoreNames.contains(STORE_ACCOUNTS)) {
         const s = db.createObjectStore(STORE_ACCOUNTS, { keyPath: 'id' });
         s.createIndex('sort', 'sort', { unique: false });
+      }
+      // v3: ensure all existing accounts have an openingBalance field
+      if (oldVersion < 3 && db.objectStoreNames.contains(STORE_ACCOUNTS)) {
+        const s = req.transaction.objectStore(STORE_ACCOUNTS);
+        const cur = s.openCursor();
+        cur.onsuccess = (e) => {
+          const c = e.target.result;
+          if (c) {
+            const v = c.value;
+            if (v && v.openingBalance == null) {
+              v.openingBalance = 0;
+              c.update(v);
+            }
+            c.continue();
+          }
+        };
       }
     };
     req.onsuccess = () => resolve(req.result);

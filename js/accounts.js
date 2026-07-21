@@ -1,20 +1,11 @@
-// js/accounts.js — default accounts + CRUD
+// js/accounts.js — accounts CRUD (默认为空，由用户自定义)
 import { put, getAll, get, deleteRecord, bulkPut, Stores } from './db.js';
 
-export const DEFAULT_ACCOUNTS = [
-  { id: 'cash',   name: '现金',   icon: '💵', color: '#52C41A', sort: 1, builtin: true },
-  { id: 'alipay', name: '支付宝', icon: '💙', color: '#1677FF', sort: 2, builtin: true },
-  { id: 'wechat', name: '微信',   icon: '💚', color: '#07C160', sort: 3, builtin: true },
-  { id: 'card',   name: '银行卡', icon: '💳', color: '#722ED1', sort: 4, builtin: true }
-];
+// 初始默认为空：用户自定义账户类型、图标和颜色
+export const DEFAULT_ACCOUNTS = [];
 
+// 兼容老版本：仍可调用 ensureAccounts，但不再自动填充任何账户
 export async function ensureAccounts() {
-  const existing = await getAll(Stores.ACCOUNTS);
-  if (existing.length === 0) {
-    for (const a of DEFAULT_ACCOUNTS) {
-      await put(Stores.ACCOUNTS, { ...a, createdAt: Date.now(), updatedAt: Date.now() });
-    }
-  }
   return getAll(Stores.ACCOUNTS);
 }
 
@@ -37,6 +28,7 @@ export async function addAccount(acc) {
     color: acc.color || '#868E96',
     sort,
     builtin: false,
+    openingBalance: acc.openingBalance == null ? 0 : Number(acc.openingBalance) || 0,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -47,12 +39,17 @@ export async function addAccount(acc) {
 export async function updateAccount(id, patch) {
   const existing = await get(Stores.ACCOUNTS, id);
   if (!existing) throw new Error('账户不存在');
+  // 允许更新 openingBalance 字段
+  if (patch && patch.openingBalance != null) {
+    patch.openingBalance = Number(patch.openingBalance) || 0;
+  }
   Object.assign(existing, patch, { updatedAt: Date.now() });
   return put(Stores.ACCOUNTS, existing);
 }
 
 export async function deleteAccount(id) {
-  // builtin accounts cannot be deleted
+  // 默认为空后所有账户均为用户自建，均可删除
+  // 仍保留 builtin 字段以兼容历史数据
   const acc = await get(Stores.ACCOUNTS, id);
   if (acc && acc.builtin) throw new Error('内置账户不可删除');
   return deleteRecord(Stores.ACCOUNTS, id);

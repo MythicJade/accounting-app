@@ -168,10 +168,11 @@ export async function transferMoney({ fromId, toId, amount, note, date }) {
   });
 }
 
-// Compute balance for a single account: income + transfers in - expense - transfers out
+// Compute balance for a single account: openingBalance + income + transfers in - expense - transfers out
 export async function getAccountBalance(accountId) {
   const all = await getAll(Stores.TRANSACTIONS);
-  let bal = 0;
+  const acc = await getAccountFromStore(accountId);
+  let bal = acc && acc.openingBalance ? Number(acc.openingBalance) : 0;
   for (const t of all) {
     if (t.accountId === accountId) {
       if (t.type === 'income') bal += t.amount;
@@ -185,27 +186,51 @@ export async function getAccountBalance(accountId) {
   return bal;
 }
 
+// Helper: fetch a single account by id (avoids circular import with accounts.js)
+async function getAccountFromStore(id) {
+  const all = await getAll(Stores.ACCOUNTS);
+  return all.find(a => a.id === id);
+}
+
 // Compute balances for all accounts at once (efficient single pass)
+// Returns { balances: Map<accountId, balance>, totals: { opening: number, netChange: number } }
 export async function getAllAccountBalances() {
   const all = await getAll(Stores.TRANSACTIONS);
+  const accounts = await getAll(Stores.ACCOUNTS);
   const map = new Map(); // accountId -> balance
+  let totalOpening = 0;
+  for (const a of accounts) {
+    const ob = a.openingBalance ? Number(a.openingBalance) : 0;
+    map.set(a.id, ob);
+    totalOpening += ob;
+  }
+  let netChange = 0;
   for (const t of all) {
     if (t.type === 'income' && t.accountId) {
       map.set(t.accountId, (map.get(t.accountId) || 0) + t.amount);
+      netChange += t.amount;
     } else if (t.type === 'expense' && t.accountId) {
       map.set(t.accountId, (map.get(t.accountId) || 0) - t.amount);
+      netChange -= t.amount;
     } else if (t.type === 'transfer') {
       if (t.accountId) map.set(t.accountId, (map.get(t.accountId) || 0) - t.amount);
       if (t.toAccountId) map.set(t.toAccountId, (map.get(t.toAccountId) || 0) + t.amount);
+      // transfers cancel out in net worth, do not touch netChange
     }
   }
+  // Stash totals on the Map for callers that need them
+  map._totals = { opening: totalOpening, netChange };
   return map;
 }
 
-// Total net worth across all accounts (income - expense; transfers cancel out)
+// Total net worth across all accounts (openingBalance + income - expense; transfers cancel out)
 export async function getTotalBalance() {
   const all = await getAll(Stores.TRANSACTIONS);
+  const accounts = await getAll(Stores.ACCOUNTS);
   let bal = 0;
+  for (const a of accounts) {
+    if (a.openingBalance) bal += Number(a.openingBalance);
+  }
   for (const t of all) {
     if (t.type === 'income') bal += t.amount;
     else if (t.type === 'expense') bal -= t.amount;
@@ -264,9 +289,7 @@ export async function importAll(data, mode = 'merge') {
 export async function clearAllData() {
   await clearStore(Stores.TRANSACTIONS);
   await clearStore(Stores.BUDGETS);
-  // Keep categories (builtin) but clear user categories too? Plan says "清空所有数据"
+  // 清空所有分类与账户（新模型下默认为空，用户重新创建）
   await clearStore(Stores.CATEGORIES);
-  await ensureCategories();
   await clearStore(Stores.ACCOUNTS);
-  await ensureAccounts();
 }

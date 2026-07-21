@@ -1,8 +1,8 @@
 // js/excel-io.js — Excel(.xlsx) 导入导出，兼容其他记账软件格式
 // 列定义（按用户提供的格式）：
 //   记账日期 | 记账时间（可不填） | 分类（转账无需填写分类） | 记账类型 | 金额（勿填正负号、0） | 流出账户 | 流入账户 | 备注
-import { listAccounts, addAccount } from './accounts.js';
-import { listCategories } from './categories.js';
+import { listAccounts, addAccount, updateAccount } from './accounts.js';
+import { listCategories, addCategory } from './categories.js';
 import { addTransaction, bulkPutTransactions, getAllTransactions } from './store.js';
 import { Stores } from './db.js';
 import { openDB } from './db.js';
@@ -85,39 +85,9 @@ function ensureXLSX() {
   });
 }
 
-// 查账户 by name，找不到则自动创建（导入时）
-async function getOrCreateAccount(name, cache) {
-  if (!name) return null;
-  const s = String(name).trim();
-  if (cache.has(s)) return cache.get(s);
-  // 模糊匹配：去掉 emoji 和空格
-  const norm = s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').trim().toLowerCase();
-  for (const [k, v] of cache) {
-    const kn = k.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').trim().toLowerCase();
-    if (kn === norm) { cache.set(s, v); return v; }
-  }
-  // create new account
-  const acc = await addAccount({ name: s, icon: '💰', color: '#868E96' });
-  cache.set(s, acc);
-  cache.set(acc.id, acc);
-  return acc;
-}
-
-function getCategoryIdByName(catName, catMap, type) {
-  if (!catName) return null;
-  const s = String(catName).trim();
-  // exact match within same type
-  for (const [id, c] of catMap) {
-    if (c.name === s && (type == null || c.type === type)) return id;
-  }
-  // fuzzy match: includes
-  for (const [id, c] of catMap) {
-    if (c.name.includes(s) || s.includes(c.name)) {
-      if (type == null || c.type === type) return id;
-    }
-  }
-  return null;
-}
+// 分类默认图标和颜色（按类型）
+const DEFAULT_CAT_ICON = { expense: '💰', income: '💼' };
+const DEFAULT_CAT_COLOR = { expense: '#868E96', income: '#52C41A' };
 
 // ===== 导出 =====
 export async function exportToExcel() {
@@ -161,8 +131,14 @@ export async function exportToExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '流水');
 
-  // 第二张表：账户列表
-  const accRows = accounts.map(a => ({ 账户名称: a.name, 图标: a.icon, 颜色: a.color, 类型: a.builtin ? '内置' : '自定义' }));
+  // 第二张表：账户列表（含期初余额）
+  const accRows = accounts.map(a => ({
+    账户名称: a.name,
+    图标: a.icon,
+    颜色: a.color,
+    期初余额: a.openingBalance != null ? Number(a.openingBalance) : 0,
+    类型: a.builtin ? '内置' : '自定义'
+  }));
   const wsAcc = XLSX.utils.json_to_sheet(accRows);
   XLSX.utils.book_append_sheet(wb, wsAcc, '账户');
 
@@ -177,8 +153,8 @@ export async function exportToExcel() {
 }
 
 // ===== 导入 =====
-// mode: 'merge' (默认，仅添加) | 'replace' (清空后导入)
-export async function importFromExcel(file, mode = 'merge') {
+// Phase 1: 预扫描 - 解析 Excel，识别账户与分类，返回结构化预览数据
+export async function previewExcelImport(file) {
   const XLSX = await ensureXLSX();
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -204,27 +180,20 @@ export async function importFromExcel(file, mode = 'merge') {
     throw new Error('Excel 中没有数据行');
   }
 
-  const accounts = await listAccounts();
-  const categories = await listCategories();
-  const accCache = new Map(accounts.map(a => [a.name, a]));
-  const catMap = new Map(categories.map(c => [c.id, c]));
+  // 解析每一行，收集账户和分类
+  const existingAccounts = await listAccounts();
+  const existingCategories = await listCategories();
+  // accName -> { name, exists, currentOpening }
+  const detectedAccountsMap = new Map();
+  for (const a of existingAccounts) detectedAccountsMap.set(a.name, { name: a.name, exists: true, currentOpening: a.openingBalance || 0, id: a.id });
+  // catKey (type|name) -> { name, type, exists }
+  const detectedCategoriesMap = new Map();
+  for (const c of existingCategories) detectedCategoriesMap.set(c.type + '|' + c.name, { name: c.name, type: c.type, exists: true });
 
-  // replace mode：清空 transactions
-  if (mode === 'replace') {
-    const db = await openDB();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(Stores.TRANSACTIONS, 'readwrite');
-      tx.objectStore(Stores.TRANSACTIONS).clear();
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  const records = [];
+  const parsedRows = [];
   let skipped = 0;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    // 按列标题模糊匹配取值
     const get = (key) => {
       for (const k of Object.keys(r)) {
         if (k.includes(key)) return r[k];
@@ -240,7 +209,6 @@ export async function importFromExcel(file, mode = 'merge') {
     const rawTo = get('流入账户');
     const rawNote = get('备注');
 
-    // 跳过空行
     if (!rawDate && !rawAmount && !rawType) {
       skipped++;
       continue;
@@ -253,7 +221,6 @@ export async function importFromExcel(file, mode = 'merge') {
       continue;
     }
 
-    // 处理日期：可能需要合并日期+时间
     let dateStr;
     if (typeof rawDate === 'number') {
       dateStr = normalizeDate(rawDate);
@@ -263,41 +230,169 @@ export async function importFromExcel(file, mode = 'merge') {
       dateStr = normalizeDate(rawDate);
     }
 
-    // 账户：流出账户=accountId，流入账户=toAccountId
+    // 收集账户名（用于预览）
+    const fromName = rawFrom ? String(rawFrom).trim() : '';
+    const toName = rawTo ? String(rawTo).trim() : '';
+    if (fromName && !detectedAccountsMap.has(fromName)) {
+      detectedAccountsMap.set(fromName, { name: fromName, exists: false, currentOpening: 0 });
+    }
+    if (toName && !detectedAccountsMap.has(toName)) {
+      detectedAccountsMap.set(toName, { name: toName, exists: false, currentOpening: 0 });
+    }
+    // 收集分类名（用于预览）
+    if (type !== 'transfer' && rawCat) {
+      const catName = String(rawCat).trim();
+      const key = type + '|' + catName;
+      if (!detectedCategoriesMap.has(key)) {
+        detectedCategoriesMap.set(key, { name: catName, type, exists: false });
+      }
+    }
+
+    parsedRows.push({
+      type,
+      amount,
+      rawCat: type !== 'transfer' ? String(rawCat || '').trim() : '',
+      rawFrom: fromName,
+      rawTo: toName,
+      note: String(rawNote || ''),
+      date: dateStr,
+      time: rawTime ? String(rawTime).trim() : ''
+    });
+  }
+
+  return {
+    sheetName,
+    totalRows: rows.length,
+    parsedRows,
+    skipped,
+    detectedAccounts: Array.from(detectedAccountsMap.values()),
+    detectedCategories: Array.from(detectedCategoriesMap.values()),
+    // 用于UI显示的分类计数
+    newAccountsCount: Array.from(detectedAccountsMap.values()).filter(a => !a.exists).length,
+    newCategoriesCount: Array.from(detectedCategoriesMap.values()).filter(c => !c.exists).length
+  };
+}
+
+// Phase 2: 实际导入 - 接收 preview 返回的数据 + 用户输入的期初余额
+// openingBalances: Map<accountName, number>
+export async function importParsedData(preview, options = {}) {
+  const { mode = 'merge', openingBalances = new Map() } = options;
+
+  const existingAccounts = await listAccounts();
+  const existingCategories = await listCategories();
+  const accCache = new Map(existingAccounts.map(a => [a.name, a]));
+  const catMap = new Map(existingCategories.map(c => [c.id, c]));
+  const catNameMap = new Map();
+  for (const c of existingCategories) {
+    catNameMap.set(c.type + '|' + c.name, c);
+  }
+
+  // replace mode：清空 transactions
+  if (mode === 'replace') {
+    const db = await openDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(Stores.TRANSACTIONS, 'readwrite');
+      tx.objectStore(Stores.TRANSACTIONS).clear();
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // 预创建所有新账户（含期初余额）和新分类，避免重复创建
+  for (const accInfo of preview.detectedAccounts) {
+    if (!accCache.has(accInfo.name)) {
+      const ob = openingBalances.has(accInfo.name)
+        ? (parseFloat(openingBalances.get(accInfo.name)) || 0)
+        : 0;
+      const acc = await addAccount({
+        name: accInfo.name,
+        icon: '💰',
+        color: '#868E96',
+        openingBalance: ob
+      });
+      accCache.set(accInfo.name, acc);
+    } else {
+      // 已存在账户：若用户在导入时输入了期初余额，则更新
+      if (openingBalances.has(accInfo.name)) {
+        const existing = accCache.get(accInfo.name);
+        const newOb = parseFloat(openingBalances.get(accInfo.name)) || 0;
+        if (Number(existing.openingBalance) !== newOb) {
+          await updateAccount(existing.id, { openingBalance: newOb });
+          existing.openingBalance = newOb;
+        }
+      }
+    }
+  }
+
+  // 预创建所有新分类
+  for (const catInfo of preview.detectedCategories) {
+    const key = catInfo.type + '|' + catInfo.name;
+    if (!catNameMap.has(key)) {
+      const c = await addCategory({
+        name: catInfo.name,
+        type: catInfo.type,
+        icon: DEFAULT_CAT_ICON[catInfo.type] || '💰',
+        color: DEFAULT_CAT_COLOR[catInfo.type] || '#868E96'
+      });
+      catMap.set(c.id, c);
+      catNameMap.set(key, c);
+    } else {
+      // 确保已在 catMap 中
+      const c = catNameMap.get(key);
+      if (!catMap.has(c.id)) catMap.set(c.id, c);
+    }
+  }
+
+  // 构建记录
+  const records = [];
+  let skippedInBuild = 0;
+  for (const p of preview.parsedRows) {
     let accountId = null;
     let toAccountId = null;
-    if (rawFrom) {
-      const acc = await getOrCreateAccount(rawFrom, accCache);
-      accountId = acc.id;
+    if (p.rawFrom) {
+      const acc = accCache.get(p.rawFrom);
+      if (acc) accountId = acc.id;
     }
-    if (rawTo) {
-      const acc = await getOrCreateAccount(rawTo, accCache);
-      toAccountId = acc.id;
+    if (p.rawTo) {
+      const acc = accCache.get(p.rawTo);
+      if (acc) toAccountId = acc.id;
     }
     // 如果只填了流入账户没填流出账户，对收入来说流入=accountId
-    if (!accountId && toAccountId && type === 'income') {
+    if (!accountId && toAccountId && p.type === 'income') {
       accountId = toAccountId;
       toAccountId = null;
     }
     // 默认账户兜底
-    if (!accountId) accountId = accounts[0] ? accounts[0].id : 'cash';
+    if (!accountId) {
+      const firstAcc = accCache.values().next().value;
+      if (firstAcc) accountId = firstAcc.id;
+    }
+    if (!accountId) {
+      skippedInBuild++;
+      continue;
+    }
 
     // 分类（仅支出/收入需要）
     let categoryId = null;
-    if (type !== 'transfer' && rawCat) {
-      categoryId = getCategoryIdByName(rawCat, catMap, type);
-      // 找不到分类不阻断，保留 null（前端会显示"未分类"）
+    if (p.type !== 'transfer' && p.rawCat) {
+      const key = p.type + '|' + p.rawCat;
+      const c = catNameMap.get(key);
+      if (c) categoryId = c.id;
     }
 
+    const createdAt = p.time
+      ? new Date(p.date + 'T' + p.time.padStart(5, '0').padEnd(5, '0') + ':00').getTime() || Date.now()
+      : Date.now();
+
     records.push({
-      type,
-      amount,
+      type: p.type,
+      amount: p.amount,
       categoryId,
       accountId,
-      toAccountId: type === 'transfer' ? toAccountId : null,
-      note: String(rawNote || ''),
-      date: dateStr,
-      createdAt: Date.now(),
+      toAccountId: p.type === 'transfer' ? toAccountId : null,
+      note: p.note,
+      date: p.date,
+      createdAt,
       updatedAt: Date.now()
     });
   }
@@ -309,9 +404,18 @@ export async function importFromExcel(file, mode = 'merge') {
   await bulkPutTransactions(records);
 
   return {
-    total: rows.length,
+    total: preview.totalRows,
     imported: records.length,
-    skipped,
-    sheetName
+    skipped: preview.skipped + skippedInBuild,
+    sheetName: preview.sheetName,
+    newAccounts: preview.newAccountsCount,
+    newCategories: preview.newCategoriesCount
   };
+}
+
+// 向后兼容：保留 importFromExcel 但默认走预扫描流程
+// 调用方可使用 previewExcelImport + importParsedData 获得更好的体验
+export async function importFromExcel(file, mode = 'merge') {
+  const preview = await previewExcelImport(file);
+  return importParsedData(preview, { mode });
 }
