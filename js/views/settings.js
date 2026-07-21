@@ -1,6 +1,7 @@
 // js/views/settings.js — settings: export/import/clear + about
 import { exportAll, importAll, clearAllData, countTransactions } from '../store.js';
-import { toast, confirmDialog, el } from '../ui.js';
+import { exportToExcel, importFromExcel } from '../excel-io.js';
+import { toast, confirmDialog, showModal, el } from '../ui.js';
 import { router } from '../router.js';
 
 export async function renderSettings(mount) {
@@ -33,6 +34,34 @@ export async function renderSettings(mount) {
       el('div', { class: 'text' }, [
         el('div', { text: '导入备份' }),
         el('div', { class: 'text-sm text-3', text: '从 JSON 文件恢复数据' })
+      ]),
+      el('div', { class: 'arrow', text: '›' })
+    ])
+  ]);
+
+  // Excel group
+  const excelGroup = el('div', { class: 'setting-list mt-16' }, [
+    el('div', { class: 'setting-item', onclick: onExportExcel }, [
+      el('div', { class: 'icon', text: '📊' }),
+      el('div', { class: 'text' }, [
+        el('div', { text: '导出 Excel' }),
+        el('div', { class: 'text-sm text-3', text: '导出 .xlsx 文件（含流水/账户/分类）' })
+      ]),
+      el('div', { class: 'arrow', text: '›' })
+    ]),
+    el('div', { class: 'setting-item', onclick: onImportExcel }, [
+      el('div', { class: 'icon', text: '📑' }),
+      el('div', { class: 'text' }, [
+        el('div', { text: '导入 Excel' }),
+        el('div', { class: 'text-sm text-3', text: '从其他记账软件的 .xlsx 导入' })
+      ]),
+      el('div', { class: 'arrow', text: '›' })
+    ]),
+    el('div', { class: 'setting-item', onclick: onShowExcelSpec }, [
+      el('div', { class: 'icon', text: 'ℹ️' }),
+      el('div', { class: 'text' }, [
+        el('div', { text: 'Excel 格式说明' }),
+        el('div', { class: 'text-sm text-3', text: '查看支持的列定义' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ])
@@ -72,7 +101,7 @@ export async function renderSettings(mount) {
     el('div', { class: 'text-sm', text: '纯本地离线运行 · 数据不离开你的设备' })
   ]);
 
-  mount.append(topbar, dataGroup, dataStats, dangerGroup, helpGroup, about);
+  mount.append(topbar, dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
 
   // Hidden file input for import
   const fileInput = document.createElement('input');
@@ -100,6 +129,92 @@ export async function renderSettings(mount) {
     fileInput.value = '';
   });
   mount.appendChild(fileInput);
+
+  // Hidden file input for Excel import
+  const excelInput = document.createElement('input');
+  excelInput.type = 'file';
+  excelInput.accept = '.xlsx,.xls';
+  excelInput.style.display = 'none';
+  excelInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const sizeKB = Math.round(file.size / 1024);
+      const ok = await confirmDialog(
+        '即将导入文件：' + file.name + '（' + sizeKB + ' KB）\n\n' +
+        '选择导入模式：\n"合并"将追加到现有数据，"替换"将先清空再导入。',
+        { okText: '合并导入', cancelText: '取消' }
+      );
+      if (!ok) { excelInput.value = ''; return; }
+      const result = await importFromExcel(file, 'merge');
+      await showModal({
+        title: '导入完成',
+        body: el('div', { style: 'font-size:14px;line-height:1.8;' }, [
+          el('div', { text: '工作表：' + result.sheetName }),
+          el('div', { text: '总行数：' + result.total }),
+          el('div', { text: '成功导入：' + result.imported + ' 条' }),
+          el('div', { text: '跳过：' + result.skipped + ' 条（金额无效或空行）' })
+        ]),
+        actions: [{ label: '完成', type: 'primary' }]
+      });
+      router.dispatch();
+    } catch (err) {
+      console.error(err);
+      toast('Excel 导入失败：' + (err.message || err));
+    }
+    excelInput.value = '';
+  });
+  mount.appendChild(excelInput);
+
+  async function onExportExcel() {
+    try {
+      toast('正在生成 Excel...');
+      const filename = await exportToExcel();
+      toast('已导出 ' + filename);
+    } catch (e) {
+      console.error(e);
+      toast('导出失败：' + (e.message || e));
+    }
+  }
+
+  function onImportExcel() {
+    excelInput.click();
+  }
+
+  async function onShowExcelSpec() {
+    const body = el('div', { style: 'font-size:13px;line-height:1.7;color:var(--text);' });
+    body.innerHTML = `
+      <p style="margin-bottom:8px;color:var(--text-2);">支持从其他记账软件导入 Excel（.xlsx）文件。第一行需为表头，格式如下：</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
+        <thead>
+          <tr style="background:#f0f0f0;">
+            <th style="padding:6px;border:1px solid #ddd;text-align:left;">列名</th>
+            <th style="padding:6px;border:1px solid #ddd;text-align:left;">说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="padding:6px;border:1px solid #ddd;">记账日期</td><td style="padding:6px;border:1px solid #ddd;">格式 YYYY-MM-DD 或 YYYY/MM/DD</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">记账时间</td><td style="padding:6px;border:1px solid #ddd;">可选，如 18:30</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">分类</td><td style="padding:6px;border:1px solid #ddd;">支出/收入必填，转账留空</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">记账类型</td><td style="padding:6px;border:1px solid #ddd;">支出 / 收入 / 转账</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">金额</td><td style="padding:6px;border:1px solid #ddd;">正数，不要正负号</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">流出账户</td><td style="padding:6px;border:1px solid #ddd;">账户名（找不到自动创建）</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">流入账户</td><td style="padding:6px;border:1px solid #ddd;">仅转账填写</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ddd;">备注</td><td style="padding:6px;border:1px solid #ddd;">可选</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-bottom:6px;color:var(--text-2);"><b>说明：</b></p>
+      <ul style="padding-left:18px;color:var(--text-2);font-size:12px;line-height:1.7;">
+        <li>系统会自动查找包含"记账日期"表头的工作表</li>
+        <li>列名会模糊匹配（如"记账时间（可不填）"会匹配"记账时间"）</li>
+        <li>账户不存在会自动创建（自定义类型）</li>
+        <li>分类不存在会显示为"未分类"，不会阻断导入</li>
+        <li>日期格式支持多种：YYYY-MM-DD / YYYY/MM/DD / Excel 序列号</li>
+      </ul>
+      <p style="margin-top:12px;color:var(--text-3);font-size:12px;">提示：导入前建议先"导出 Excel"备份当前数据。</p>
+    `;
+    await showModal({ title: 'Excel 格式说明', body, actions: [{ label: '知道了', type: 'primary' }] });
+  }
 
   async function onExport() {
     try {

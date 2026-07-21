@@ -70,10 +70,6 @@ export async function listTransactions(opts = {}) {
     // For transfer records, also include records where toAccountId matches
     result = result.filter(t => t.accountId === opts.accountId || t.toAccountId === opts.accountId);
   }
-  // Exclude transfers from default listings unless explicitly requested
-  if (!opts.includeTransfers) {
-    // keep transfers in listTransactions only when caller asks; but for stats we filter separately
-  }
   // sort: by date desc, then by createdAt desc
   result.sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? 1 : -1;
@@ -81,6 +77,14 @@ export async function listTransactions(opts = {}) {
   });
   if (opts.limit) result = result.slice(0, opts.limit);
   return result;
+}
+
+export async function getAllTransactions() {
+  return getAll(Stores.TRANSACTIONS);
+}
+
+export async function bulkPutTransactions(records) {
+  return bulkPut(Stores.TRANSACTIONS, records);
 }
 
 export async function countTransactions() {

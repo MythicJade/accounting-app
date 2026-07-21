@@ -1,5 +1,5 @@
 /* PWA Cache shell */
-const CACHE_NAME = 'accounting-v3';
+const CACHE_NAME = 'accounting-v4';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -10,9 +10,11 @@ const PRECACHE_URLS = [
   './js/store.js',
   './js/categories.js',
   './js/accounts.js',
+  './js/excel-io.js',
   './js/format.js',
   './js/router.js',
   './js/ui.js',
+  './js/lib/xlsx.full.min.js',
   './js/views/home.js',
   './js/views/add-transaction.js',
   './js/views/stats.js',
