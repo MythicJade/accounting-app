@@ -81,7 +81,8 @@ export function formatTime(ts) {
 
 // Get range of dates for given period
 export function getRange(period, ref = new Date()) {
-  // period: 'day' | 'week' | 'month' | 'year'
+  // period: 'day' | 'week' | 'month' | 'year' | 'custom'
+  // For 'custom' use getCustomRange(startStr, endStr) instead
   const start = new Date(ref);
   let end = new Date(ref);
   if (period === 'day') {
@@ -102,6 +103,10 @@ export function getRange(period, ref = new Date()) {
     start.setMonth(0, 1);
     start.setHours(0, 0, 0, 0);
     end = new Date(start.getFullYear(), 11, 31, 23, 59, 59, 999);
+  } else if (period === 'custom') {
+    // caller should use getCustomRange
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
   }
   return {
     start: formatDateStr(start),
@@ -111,8 +116,20 @@ export function getRange(period, ref = new Date()) {
   };
 }
 
+// Build a custom date range from user input
+export function getCustomRange(startStr, endStr) {
+  if (!startStr || !endStr) return null;
+  // ensure start <= end
+  let s = startStr, e = endStr;
+  if (s > e) { const tmp = s; s = e; e = tmp; }
+  const startDate = new Date(s + 'T00:00:00');
+  const endDate = new Date(e + 'T23:59:59.999');
+  return { start: s, end: e, startDate, endDate, isCustom: true };
+}
+
 // shift range by N periods (positive = forward, negative = back)
 export function shiftRange(range, period, delta) {
+  if (period === 'custom') return range; // no shift for custom
   const start = new Date(range.startDate);
   if (period === 'day') start.setDate(start.getDate() + delta);
   else if (period === 'week') start.setDate(start.getDate() + 7 * delta);
@@ -124,10 +141,11 @@ export function shiftRange(range, period, delta) {
 export function rangeLabel(range, period) {
   const s = range.start;
   const e = range.end;
-  if (period === 'day') return friendlyDate(s) + (new Date(s + 'T00:00:00').toDateString() === new Date().toDateString() ? '' : '');
+  if (period === 'day') return friendlyDate(s);
   if (period === 'week') return `${s.slice(5)} ~ ${e.slice(5)}`;
   if (period === 'month') return monthKeyToLabel(s.slice(0, 7));
   if (period === 'year') return s.slice(0, 4) + '年';
+  if (period === 'custom') return `${s} ~ ${e}`;
   return s;
 }
 

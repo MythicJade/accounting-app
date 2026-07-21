@@ -1,5 +1,8 @@
 // js/charts/line-chart.js — Canvas line chart, no dependencies
-// data: [{ label, value }]
+// data: [{ label, value, fullLabel? }]
+// options: { color, selected, onSelect }
+//   - selected: index of selected point (or null)
+//   - onSelect(idx|null): called when user taps a point
 export function drawLineChart(canvas, data, options = {}) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -16,16 +19,15 @@ export function drawLineChart(canvas, data, options = {}) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('暂无数据', cssW / 2, cssH / 2);
-    return;
+    return null;
   }
 
-  const pad = { top: 16, right: 12, bottom: 24, left: 36 };
+  const pad = { top: 18, right: 16, bottom: 26, left: 38 };
   const w = cssW - pad.left - pad.right;
   const h = cssH - pad.top - pad.bottom;
 
   const values = data.map(d => d.value);
   const maxVal = Math.max(1, ...values);
-  // Round up to nice number
   const niceMax = niceNumber(maxVal);
   const minVal = 0;
 
@@ -46,7 +48,7 @@ export function drawLineChart(canvas, data, options = {}) {
     ctx.fillText(formatShort(val), pad.left - 6, y);
   }
 
-  // X-axis labels (show subset to avoid clutter)
+  // X-axis labels (subset to avoid clutter)
   ctx.fillStyle = '#9CA3AF';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
@@ -58,19 +60,22 @@ export function drawLineChart(canvas, data, options = {}) {
     ctx.fillText(d.label, x, pad.top + h + 6);
   });
 
-  // Line + area
+  // Points
   const lineColor = options.color || '#4ECDC4';
   const points = data.map((d, i) => ({
+    index: i,
     x: pad.left + (w / Math.max(1, data.length - 1)) * i,
     y: pad.top + h - ((d.value - minVal) / (niceMax - minVal)) * h,
-    value: d.value
+    value: d.value,
+    label: d.label,
+    fullLabel: d.fullLabel || d.label
   }));
 
   // Gradient area
   if (points.length > 1) {
     const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + h);
-    gradient.addColorStop(0, 'rgba(78, 205, 196, 0.25)');
-    gradient.addColorStop(1, 'rgba(78, 205, 196, 0)');
+    gradient.addColorStop(0, hexToRgba(lineColor, 0.25));
+    gradient.addColorStop(1, hexToRgba(lineColor, 0));
     ctx.beginPath();
     ctx.moveTo(points[0].x, pad.top + h);
     points.forEach(p => ctx.lineTo(p.x, p.y));
@@ -92,35 +97,155 @@ export function drawLineChart(canvas, data, options = {}) {
   });
   ctx.stroke();
 
-  // Points (only if not too many)
-  if (points.length <= 16) {
-    points.forEach(p => {
+  // Points (visible only if not too many)
+  const showDots = points.length <= 31;
+  if (showDots) {
+    points.forEach((p, i) => {
+      const isSel = options.selected === i;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, isSel ? 5 : 3, 0, Math.PI * 2);
       ctx.fillStyle = '#fff';
       ctx.fill();
       ctx.strokeStyle = lineColor;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = isSel ? 3 : 2;
       ctx.stroke();
     });
   }
 
-  // Hover/peak label
-  const peakIdx = values.indexOf(Math.max(...values));
-  if (peakIdx >= 0 && values[peakIdx] > 0) {
-    const p = points[peakIdx];
-    const label = formatShort(p.value);
-    ctx.fillStyle = lineColor;
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    // background
-    const tw = ctx.measureText(label).width;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(p.x - tw/2 - 4, p.y - 22, tw + 8, 16);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(label, p.x, p.y - 6);
+  // Tooltip for selected point
+  const selIdx = options.selected;
+  if (selIdx != null && selIdx >= 0 && selIdx < points.length) {
+    const p = points[selIdx];
+    drawTooltip(ctx, p, lineColor, options.valueFormatter);
+  } else {
+    // Show peak label by default (no selection)
+    const peakIdx = values.indexOf(Math.max(...values));
+    if (peakIdx >= 0 && values[peakIdx] > 0) {
+      // peak label skipped if too many points and not selectable
+      const p = points[peakIdx];
+      const label = formatShort(p.value);
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(label).width;
+      // background
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      const boxW = tw + 10;
+      const boxH = 16;
+      const boxX = clamp(p.x - boxW / 2, 1, cssW - boxW - 1);
+      const boxY = clamp(p.y - boxH - 8, 1, cssH - boxH - 1);
+      roundRect(ctx, boxX, boxY, boxW, boxH, 4);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, boxX + boxW / 2, boxY + boxH / 2 + 1);
+    }
   }
+
+  // Click handler (register once)
+  if (options.onSelect && !canvas._lineHandlerBound) {
+    canvas._lineHandlerBound = true;
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      // Find nearest point by x distance
+      let nearest = null;
+      let minDist = Infinity;
+      points.forEach(p => {
+        const d = Math.abs(p.x - cx);
+        if (d < minDist) {
+          minDist = d;
+          nearest = p;
+        }
+      });
+      // Threshold: max half of step + tolerance
+      const threshold = Math.max(20, w / Math.max(1, points.length) / 2 + 8);
+      if (nearest && minDist <= threshold) {
+        options.onSelect(nearest.index);
+      } else {
+        options.onSelect(null);
+      }
+    });
+  }
+
+  return points;
+}
+
+function drawTooltip(ctx, p, color, valueFormatter) {
+  const fmt = valueFormatter || ((v) => formatShort(v));
+  const valueText = fmt(p.value);
+  const labelText = p.fullLabel || p.label;
+  const valueLine = valueText;
+
+  ctx.font = 'bold 12px sans-serif';
+  const valueW = ctx.measureText(valueLine).width;
+  ctx.font = '10px sans-serif';
+  const labelW = ctx.measureText(labelText).width;
+  const boxW = Math.max(valueW, labelW) + 14;
+  const boxH = 36;
+
+  const cssW = ctx.canvas.clientWidth || 320;
+  const cssH = ctx.canvas.clientHeight || 220;
+  let boxX = p.x - boxW / 2;
+  let boxY = p.y - boxH - 10;
+  boxX = clamp(boxX, 2, cssW - boxW - 2);
+  if (boxY < 2) boxY = p.y + 10;
+
+  // background
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  roundRect(ctx, boxX, boxY, boxW, boxH, 6);
+  ctx.fill();
+
+  // left color bar
+  ctx.fillStyle = color;
+  roundRect(ctx, boxX, boxY, 3, boxH, 1.5);
+  ctx.fill();
+
+  // text
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '10px sans-serif';
+  ctx.fillText(labelText, boxX + boxW / 2, boxY + 11);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(valueLine, boxX + boxW / 2, boxY + 25);
+
+  // pointer line from box to point
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  ctx.moveTo(boxX + boxW / 2, boxY + boxH);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function hexToRgba(hex, alpha) {
+  // accepts #RGB or #RRGGBB
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function niceNumber(n) {
