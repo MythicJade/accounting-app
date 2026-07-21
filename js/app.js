@@ -32,7 +32,19 @@ async function main() {
     await initStore();
     router.start();
   } catch (e) {
-    console.error(e);
+    console.error('App init failed:', e);
+    const view = document.getElementById('view');
+    if (view) {
+      view.innerHTML = `
+        <div style="padding:32px 16px;text-align:center;color:#722ED1;">
+          <div style="font-size:48px;margin-bottom:8px;">⚠️</div>
+          <h2 style="margin:8px 0;">应用启动失败</h2>
+          <p style="color:#666;font-size:13px;margin:8px 0 16px;">${(e && e.message) ? String(e.message).replace(/</g, '&lt;') : '未知错误'}</p>
+          <button onclick="location.reload()" style="background:#1677FF;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:14px;">重新加载</button>
+          <p style="color:#999;font-size:12px;margin-top:16px;">如反复出现，请清除浏览器缓存后重试</p>
+        </div>
+      `;
+    }
     toast('应用启动失败: ' + (e.message || e), 'error', 4000);
   }
 }

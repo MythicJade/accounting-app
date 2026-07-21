@@ -57,7 +57,7 @@ export async function renderAccounts(mount) {
             el('span', { text: '›' })
           ])
         ])
-      });
+      ]);
       listEl.appendChild(item);
     });
   }

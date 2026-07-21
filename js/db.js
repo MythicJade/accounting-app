@@ -13,9 +13,11 @@ export function openDB() {
   if (_dbPromise) return _dbPromise;
   _dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let upgradeFromVersion = 0;
     req.onupgradeneeded = (e) => {
       const db = req.result;
       const oldVersion = e.oldVersion;
+      upgradeFromVersion = oldVersion;
       if (!db.objectStoreNames.contains(STORE_TRANSACTIONS)) {
         const s = db.createObjectStore(STORE_TRANSACTIONS, { keyPath: 'id', autoIncrement: true });
         s.createIndex('date', 'date', { unique: false });
@@ -40,27 +42,40 @@ export function openDB() {
         const s = db.createObjectStore(STORE_ACCOUNTS, { keyPath: 'id' });
         s.createIndex('sort', 'sort', { unique: false });
       }
-      // v3: ensure all existing accounts have an openingBalance field
-      if (oldVersion < 3 && db.objectStoreNames.contains(STORE_ACCOUNTS)) {
-        const s = req.transaction.objectStore(STORE_ACCOUNTS);
-        const cur = s.openCursor();
-        cur.onsuccess = (e) => {
-          const c = e.target.result;
-          if (c) {
-            const v = c.value;
-            if (v && v.openingBalance == null) {
-              v.openingBalance = 0;
-              c.update(v);
-            }
-            c.continue();
-          }
-        };
-      }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // v3 数据迁移：为现有 accounts 补全 openingBalance 字段
+      // 在 onsuccess 中独立事务执行，避免在 versionchange 事务中异步 cursor 失败
+      if (upgradeFromVersion < 3) {
+        migrateAccountsOpeningBalance(db).catch(err => console.warn('v3 migration skipped:', err));
+      }
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
   return _dbPromise;
+}
+
+// v3 migration: backfill openingBalance:0 on existing accounts (safe, idempotent)
+function migrateAccountsOpeningBalance(db) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_ACCOUNTS, 'readwrite');
+    const store = tx.objectStore(STORE_ACCOUNTS);
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      const accounts = getAllReq.result || [];
+      const toUpdate = accounts.filter(a => a.openingBalance == null);
+      if (toUpdate.length === 0) return; // nothing to do
+      for (const a of toUpdate) {
+        a.openingBalance = 0;
+        store.put(a);
+      }
+    };
+    getAllReq.onerror = () => reject(getAllReq.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 function tx(storeName, mode) {
