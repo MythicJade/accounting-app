@@ -87,7 +87,21 @@ function ensureXLSX() {
 
 // 分类默认图标和颜色（按类型）
 const DEFAULT_CAT_ICON = { expense: '💰', income: '💼' };
-const DEFAULT_CAT_COLOR = { expense: '#868E96', income: '#52C41A' };
+
+// 颜色调色板（与分类管理页保持一致）
+const COLOR_PALETTE = ['#FF6B6B','#4ECDC4','#FFA94D','#845EF7','#F783AC','#51CF66','#339AF0','#FAAD14','#52C41A','#1677FF','#07C160','#722ED1','#FA8C16','#13C2C2','#868E96','#EB2F96'];
+const ACCOUNT_ICON_PALETTE = ['💵','💳','💙','💚','💛','🏦','📱','💰','📈','🏠','👛','💎'];
+
+// 从调色板中随机挑一个颜色，尽量避开已用过的颜色以保证视觉区分度
+function pickRandomColor(usedSet) {
+  const available = COLOR_PALETTE.filter(c => !usedSet || !usedSet.has(c));
+  const pool = available.length > 0 ? available : COLOR_PALETTE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function pickRandomIcon(icons) {
+  return icons[Math.floor(Math.random() * icons.length)];
+}
 
 // ===== 导出 =====
 export async function exportToExcel() {
@@ -299,15 +313,22 @@ export async function importParsedData(preview, options = {}) {
   }
 
   // 预创建所有新账户（含期初余额）和新分类，避免重复创建
+  // 收集所有已用颜色（按名称），便于新分配时避开重复
+  const usedColors = new Set();
+  for (const a of existingAccounts) usedColors.add(a.color);
+  for (const c of existingCategories) usedColors.add(c.color);
+
   for (const accInfo of preview.detectedAccounts) {
     if (!accCache.has(accInfo.name)) {
       const ob = openingBalances.has(accInfo.name)
         ? (parseFloat(openingBalances.get(accInfo.name)) || 0)
         : 0;
+      const color = pickRandomColor(usedColors);
+      usedColors.add(color);
       const acc = await addAccount({
         name: accInfo.name,
-        icon: '💰',
-        color: '#868E96',
+        icon: pickRandomIcon(ACCOUNT_ICON_PALETTE),
+        color: color,
         openingBalance: ob
       });
       accCache.set(accInfo.name, acc);
@@ -324,15 +345,17 @@ export async function importParsedData(preview, options = {}) {
     }
   }
 
-  // 预创建所有新分类
+  // 预创建所有新分类（随机分配颜色）
   for (const catInfo of preview.detectedCategories) {
     const key = catInfo.type + '|' + catInfo.name;
     if (!catNameMap.has(key)) {
+      const color = pickRandomColor(usedColors);
+      usedColors.add(color);
       const c = await addCategory({
         name: catInfo.name,
         type: catInfo.type,
         icon: DEFAULT_CAT_ICON[catInfo.type] || '💰',
-        color: DEFAULT_CAT_COLOR[catInfo.type] || '#868E96'
+        color: color
       });
       catMap.set(c.id, c);
       catNameMap.set(key, c);

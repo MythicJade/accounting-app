@@ -21,7 +21,12 @@ export function drawPieChart(canvas, data, options = {}) {
   const innerRadius = radius * 0.58; // donut hole
   const slices = [];
 
+  // Cache geometry on canvas instance so click handler doesn't close over stale data
+  canvas._pieGeom = { cx, cy, radius, innerRadius };
+  canvas._pieOnSelect = options.onSelect;
+
   if (total <= 0) {
+    canvas._pieSlices = [];
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2, true);
@@ -52,6 +57,8 @@ export function drawPieChart(canvas, data, options = {}) {
     });
     startAngle = endAngle;
   });
+  // Cache slices for click handler
+  canvas._pieSlices = slices;
 
   // Draw slices (donut shape)
   slices.forEach(s => {
@@ -113,29 +120,33 @@ export function drawPieChart(canvas, data, options = {}) {
     ctx.fillText('总计', cx, cy + 14);
   }
 
-  // Click handler (only register once)
-  if (options.onSelect && !canvas._pieHandlerBound) {
+  // Click handler (only register once; reads latest geometry from canvas instance)
+  if (!canvas._pieHandlerBound) {
     canvas._pieHandlerBound = true;
     canvas.style.cursor = 'pointer';
     canvas.addEventListener('click', (e) => {
+      const geom = canvas._pieGeom;
+      const onSelect = canvas._pieOnSelect;
+      const sl = canvas._pieSlices || [];
+      if (!geom || !onSelect) return;
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left - cx;
-      const y = e.clientY - rect.top - cy;
+      const x = e.clientX - rect.left - geom.cx;
+      const y = e.clientY - rect.top - geom.cy;
       const dist = Math.sqrt(x * x + y * y);
-      if (dist < innerRadius || dist > radius + 6) {
-        options.onSelect(null);
+      if (dist < geom.innerRadius || dist > geom.radius + 6) {
+        onSelect(null);
         return;
       }
       let angle = Math.atan2(y, x);
       // normalize to start from -PI/2 (top)
       if (angle < -Math.PI / 2) angle += Math.PI * 2;
-      for (const s of slices) {
+      for (const s of sl) {
         if (angle >= s.startAngle && angle <= s.endAngle) {
-          options.onSelect(s.index);
+          onSelect(s.index);
           return;
         }
       }
-      options.onSelect(null);
+      onSelect(null);
     });
   }
 

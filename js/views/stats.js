@@ -8,8 +8,6 @@ import { drawPieChart } from '../charts/pie-chart.js';
 import { drawLineChart } from '../charts/line-chart.js';
 
 const PERIODS = [
-  { key: 'day',     label: '日' },
-  { key: 'week',    label: '周' },
   { key: 'month',   label: '月' },
   { key: 'year',    label: '年' },
   { key: 'custom',  label: '自定义' }

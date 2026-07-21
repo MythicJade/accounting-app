@@ -71,6 +71,11 @@ export function drawLineChart(canvas, data, options = {}) {
     fullLabel: d.fullLabel || d.label
   }));
 
+  // Cache latest points/options for click handler so it doesn't close over stale data
+  canvas._linePoints = points;
+  canvas._lineChartW = w;
+  canvas._lineOnSelect = options.onSelect;
+
   // Gradient area
   if (points.length > 1) {
     const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + h);
@@ -141,29 +146,33 @@ export function drawLineChart(canvas, data, options = {}) {
     }
   }
 
-  // Click handler (register once)
-  if (options.onSelect && !canvas._lineHandlerBound) {
+  // Click handler (register once; reads latest points from canvas instance)
+  if (!canvas._lineHandlerBound) {
     canvas._lineHandlerBound = true;
     canvas.style.cursor = 'pointer';
     canvas.addEventListener('click', (e) => {
+      const pts = canvas._linePoints || [];
+      const onSelect = canvas._lineOnSelect;
+      if (!pts.length || !onSelect) return;
       const rect = canvas.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       // Find nearest point by x distance
       let nearest = null;
       let minDist = Infinity;
-      points.forEach(p => {
+      pts.forEach(p => {
         const d = Math.abs(p.x - cx);
         if (d < minDist) {
           minDist = d;
           nearest = p;
         }
       });
+      const chartW = canvas._lineChartW || 280;
       // Threshold: max half of step + tolerance
-      const threshold = Math.max(20, w / Math.max(1, points.length) / 2 + 8);
+      const threshold = Math.max(20, chartW / Math.max(1, pts.length) / 2 + 8);
       if (nearest && minDist <= threshold) {
-        options.onSelect(nearest.index);
+        onSelect(nearest.index);
       } else {
-        options.onSelect(null);
+        onSelect(null);
       }
     });
   }
