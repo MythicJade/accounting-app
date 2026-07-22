@@ -22,11 +22,6 @@ router.register('/settings', renderSettings);
 router.register('/accounts', renderAccounts);
 router.register('/categories', renderCategories);
 
-// Floating + button
-document.getElementById('fab-add').addEventListener('click', () => {
-  location.hash = '#/add';
-});
-
 async function main() {
   try {
     await initStore();

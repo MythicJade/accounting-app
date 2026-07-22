@@ -13,6 +13,14 @@ export async function renderSettings(mount) {
 
   // Data group
   const dataGroup = el('div', { class: 'setting-list' }, [
+    el('div', { class: 'setting-item', onclick: () => location.hash = '#/budget' }, [
+      el('div', { class: 'icon', text: '📊' }),
+      el('div', { class: 'text' }, [
+        el('div', { text: '预算管理' }),
+        el('div', { class: 'text-sm text-3', text: '设置月度预算上限与历史' })
+      ]),
+      el('div', { class: 'arrow', text: '›' })
+    ]),
     el('div', { class: 'setting-item', onclick: () => location.hash = '#/accounts' }, [
       el('div', { class: 'icon', text: '💳' }),
       el('div', { class: 'text' }, [

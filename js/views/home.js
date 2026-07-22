@@ -104,9 +104,9 @@ export async function renderHome(mount) {
     nodes.push(setBudget);
   }
 
-  // Recent transactions
-  const recentCard = el('section', { class: 'card' });
-  const header = el('div', { class: 'card-title' }, [
+  // Recent transactions — 不使用 card 容器，让每个 tx-item 独立显示为白底分框
+  const recentCard = el('section', { class: 'tx-section' });
+  const header = el('div', { class: 'card-title', style: 'padding:0 4px;' }, [
     el('span', { text: '最近流水' }),
     recent.length > 0 ? el('a', { class: 'text-sm', href: '#/stats', text: '查看统计' }) : null
   ]);
@@ -117,14 +117,14 @@ export async function renderHome(mount) {
       el('svg', { viewBox: '0 0 24 24', width: '48', height: '48', fill: 'currentColor' }, [
         // placeholder path added via innerHTML
       ]),
-      el('p', { text: '还没有记录，点击下方「+」记一笔吧' })
+      el('p', { text: '还没有记录，点击右下角「+」记一笔吧' })
     ]));
     const emptySvg = recentCard.querySelector('svg');
     if (emptySvg) emptySvg.innerHTML = '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14h-2v-4h2v4zm0-6h-2V7h2v4z"/>';
   } else {
     const list = el('div', { class: 'transaction-list' });
     recent.forEach(t => {
-      let iconNode, nameText, amountText, amountClass;
+      let iconNode, nameText, amountText, amountClass, accountName = '';
       if (t.type === 'transfer') {
         const fromAcc = accMap.get(t.accountId) || { name: '?', icon: '📤', color: '#999' };
         const toAcc = accMap.get(t.toAccountId) || { name: '?', icon: '📥', color: '#999' };
@@ -136,18 +136,25 @@ export async function renderHome(mount) {
         const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#999' };
         const acc = accMap.get(t.accountId);
         iconNode = el('div', { class: 'icon', style: `background:${cat.color}22;color:${cat.color}` }, [document.createTextNode(cat.icon)]);
-        nameText = cat.name + (acc && _selectedAccountId === null ? ' · ' + acc.name : '');
+        // 分类名单独显示在左侧；账户名放在金额下面（仅"全部"视图下显示）
+        nameText = cat.name;
+        accountName = (acc && _selectedAccountId === null) ? acc.name : '';
         amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
         amountClass = t.type;
       }
-      const item = el('div', { class: 'list-item', dataset: { id: t.id } }, [
+      // 右侧金额列：金额 + 账户名（账户名在金额下面）
+      const amountCol = el('div', { class: 'amount-col' }, [
+        el('span', { class: 'amount ' + amountClass, text: amountText }),
+        accountName ? el('span', { class: 'account-name', text: accountName }) : null
+      ].filter(Boolean));
+      const item = el('div', { class: 'tx-item', dataset: { id: t.id } }, [
         iconNode,
         el('div', { class: 'meta' }, [
           el('div', { class: 'top' }, [
             el('span', { class: 'name', text: nameText }),
-            el('span', { class: 'amount ' + amountClass, text: amountText })
+            amountCol
           ]),
-          el('div', { class: 'between text-sm text-3' }, [
+          el('div', { class: 'between text-xs text-3' }, [
             el('span', { class: 'note', text: t.note || '—' }),
             el('span', { text: friendlyDate(t.date) })
           ])
@@ -159,6 +166,12 @@ export async function renderHome(mount) {
     recentCard.appendChild(list);
   }
   nodes.push(recentCard);
+
+  // FAB 加号按钮（首页右下角浮动）
+  const fab = el('button', { class: 'fab-add', 'aria-label': '记一笔', onclick: () => location.hash = '#/add' }, [
+    el('svg', { viewBox: '0 0 24 24', width: '28', height: '28', fill: 'currentColor', html: '<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/>' })
+  ]);
+  nodes.push(fab);
 
   mount.append(...nodes);
 
