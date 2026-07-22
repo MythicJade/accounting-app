@@ -1,5 +1,5 @@
 /* PWA Cache shell */
-const CACHE_NAME = 'accounting-v13';
+const CACHE_NAME = 'accounting-v14';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
   './js/format.js',
   './js/router.js',
   './js/ui.js',
+  './js/version.js',
   './js/lib/xlsx.full.min.js',
   './js/views/home.js',
   './js/views/add-transaction.js',

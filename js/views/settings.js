@@ -3,6 +3,7 @@ import { exportAll, importAll, clearAllData, countTransactions } from '../store.
 import { exportToExcel, previewExcelImport, importParsedData } from '../excel-io.js';
 import { toast, confirmDialog, showModal, el } from '../ui.js';
 import { router } from '../router.js';
+import { APP_VERSION } from '../version.js';
 
 export async function renderSettings(mount) {
   const count = await countTransactions();
@@ -109,7 +110,7 @@ export async function renderSettings(mount) {
 
   const about = el('div', { class: 'about-block' }, [
     el('div', { class: 'logo', text: '📒' }),
-    el('div', { text: '我的记账 v1.0' }),
+    el('div', { text: '我的记账 v' + APP_VERSION }),
     el('div', { class: 'text-sm', text: '纯本地离线运行 · 数据不离开你的设备' })
   ]);
 
@@ -371,7 +372,7 @@ export async function renderSettings(mount) {
     const body = el('div', { style: 'font-size:14px;line-height:1.7;color:var(--text);text-align:center;' });
     body.innerHTML = `
       <div style="font-size:48px;margin-bottom:8px;">📒</div>
-      <p style="font-weight:600;margin-bottom:4px;">我的记账 v1.0</p>
+      <p style="font-weight:600;margin-bottom:4px;">我的记账 v${APP_VERSION}</p>
       <p style="color:var(--text-2);margin-bottom:12px;">个人离线记账 PWA 应用</p>
       <p style="color:var(--text-3);font-size:12px;">数据使用 IndexedDB 完全本地存储<br>不联网 · 不上传 · 隐私无忧</p>
     `;

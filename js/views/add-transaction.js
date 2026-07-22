@@ -1,4 +1,5 @@
 // js/views/add-transaction.js — add/edit transaction form
+// 固定不可滑动布局：顶部金额/类型，中部分类轮播，底部字段 + 固定数字键盘
 import { addTransaction, updateTransaction, getTransaction, deleteTransaction, transferMoney } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
@@ -44,12 +45,11 @@ export async function renderAddTransaction(mount, params = {}) {
     editId ? el('button', { class: 'btn-text danger', onclick: () => onDelete(editId) }, [el('span', { text: '删除' })]) : el('span')
   ]);
 
-  // Amount display — 点击后弹出数字键盘
+  // Amount display（键盘固定显示，无需点击弹窗）
   const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'empty'), text: state.amount || '0.00' });
-  const amountDisplay = el('div', { class: 'amount-display amount-tapable', onclick: () => openKeypad() }, [
+  const amountDisplay = el('div', { class: 'amount-display amount-compact' }, [
     el('span', { class: 'currency', text: '¥' }),
-    amountValue,
-    el('span', { class: 'amount-tap-hint', text: '点击输入' })
+    amountValue
   ]);
 
   // Type tabs (支出 / 收入 / 转账)
@@ -61,8 +61,6 @@ export async function renderAddTransaction(mount, params = {}) {
   ]);
 
   // ===== Category carousel (5 cols × 2 rows per page, horizontal swipe) =====
-  // 结构：.cat-carousel > .cat-pages-track (transform 移动) > .cat-page (10 项)
-  //       .cat-dots (页码指示器)
   const catCarousel = el('div', { class: 'cat-carousel' });
   const catTrack = el('div', { class: 'cat-pages-track' });
   catCarousel.appendChild(catTrack);
@@ -80,9 +78,7 @@ export async function renderAddTransaction(mount, params = {}) {
       catTrack.appendChild(empty);
       return;
     }
-    // 在末尾追加一个"+"按钮（用于跳转到分类管理）
     const itemsWithAdd = cats.concat([{ _isAdd: true }]);
-    // 按 10 项分页
     const pageCount = Math.ceil(itemsWithAdd.length / CATS_PER_PAGE);
     for (let p = 0; p < pageCount; p++) {
       const pageItems = itemsWithAdd.slice(p * CATS_PER_PAGE, (p + 1) * CATS_PER_PAGE);
@@ -103,11 +99,9 @@ export async function renderAddTransaction(mount, params = {}) {
         page.appendChild(item);
       });
       catTrack.appendChild(page);
-      // 页码指示器圆点
       const dot = el('span', { class: 'cat-dot' + (p === 0 ? ' active' : '') });
       catDots.appendChild(dot);
     }
-    // 显示页码指示器（多于 1 页才显示）
     catDots.style.display = pageCount > 1 ? 'flex' : 'none';
     currentPageIdx = 0;
     updateTrackPosition();
@@ -118,7 +112,6 @@ export async function renderAddTransaction(mount, params = {}) {
     if (pages.length === 0) return;
     const carouselWidth = catCarousel.clientWidth || 320;
     catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth}px)`;
-    // 更新指示器
     Array.from(catDots.children).forEach((d, i) => {
       d.className = 'cat-dot' + (i === currentPageIdx ? ' active' : '');
     });
@@ -185,7 +178,7 @@ export async function renderAddTransaction(mount, params = {}) {
   });
 
   renderCats();
-  const catCard = el('section', { class: 'card' }, [catCarousel, catDots]);
+  const catCard = el('section', { class: 'card add-cat-card' }, [catCarousel, catDots]);
 
   // Transfer-specific fields (from / to account selectors)
   const fromSelect = el('select', { class: 'input' });
@@ -202,12 +195,12 @@ export async function renderAddTransaction(mount, params = {}) {
   toSelect.value = state.toAccountId || (allAccounts[1] ? allAccounts[1].id : '');
   toSelect.addEventListener('change', (e) => { state.toAccountId = e.target.value; });
 
-  const transferCard = el('section', { class: 'card' }, [
+  const transferCard = el('section', { class: 'card add-transfer-card' }, [
     el('div', { class: 'field' }, [
       el('label', { text: '从账户' }),
       fromSelect
     ]),
-    el('div', { class: 'field' }, [
+    el('div', { class: 'field', style: 'margin-bottom:0;' }, [
       el('label', { text: '到账户' }),
       toSelect
     ])
@@ -221,107 +214,67 @@ export async function renderAddTransaction(mount, params = {}) {
   accountSelect.value = state.accountId || '';
   accountSelect.addEventListener('change', (e) => { state.accountId = e.target.value; });
 
-  const accountField = el('div', { class: 'field' }, [
+  const accountCell = el('div', { class: 'add-field' }, [
     el('label', { text: '账户' }),
     allAccounts.length === 0
-      ? el('div', { style: 'display:flex;gap:8px;align-items:center;' }, [
-          el('span', { class: 'text-sm text-3', text: '暂无账户' }),
-          el('button', { class: 'btn', style: 'background:var(--c-primary);color:#fff;padding:4px 10px;font-size:13px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
-        ])
+      ? el('button', { class: 'btn', style: 'background:var(--c-primary);color:#fff;padding:6px 8px;font-size:12px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
       : accountSelect
   ]);
 
   // Note + Date
-  const noteInput = el('input', { class: 'input', type: 'text', placeholder: '备注（可选）', value: state.note, maxlength: 50 });
+  const noteInput = el('input', { class: 'input', type: 'text', placeholder: '备注', value: state.note, maxlength: 50 });
   noteInput.addEventListener('input', (e) => { state.note = e.target.value; });
   const dateInput = el('input', { class: 'input', type: 'date', value: state.date });
   dateInput.addEventListener('change', (e) => { state.date = e.target.value; });
 
-  const fieldsCard = el('section', { class: 'card' }, [
-    accountField,
-    el('div', { class: 'field' }, [
-      el('label', { text: '备注' }),
-      noteInput
-    ]),
-    el('div', { class: 'field' }, [
-      el('label', { text: '日期' }),
-      dateInput
-    ])
+  const noteCell = el('div', { class: 'add-field' }, [
+    el('label', { text: '备注' }),
+    noteInput
+  ]);
+  const dateCell = el('div', { class: 'add-field' }, [
+    el('label', { text: '日期' }),
+    dateInput
   ]);
 
-  // Save button
-  const saveBtn = el('button', { class: 'btn btn-block', onclick: onSave }, [el('span', { text: '保存' })]);
+  // 字段行（账户 / 日期 / 备注）放在键盘上方
+  const fieldsRow = el('div', { class: 'add-fields' }, [accountCell, dateCell, noteCell]);
 
-  // ===== Popup numeric keypad (模态弹出，点击金额时显示) =====
-  // 由 mask + 底部 keypad panel 组成；点击 mask 或"完成"关闭
-  let keypadOpen = false;
-  const keypadMask = el('div', { class: 'keypad-mask', style: 'display:none;' });
-  const keypadPanel = el('div', { class: 'keypad-panel' });
-  // 顶部：当前金额预览 + 完成按钮
-  const keypadPreview = el('span', { class: 'keypad-preview', text: state.amount || '0.00' });
-  const keypadHeader = el('div', { class: 'keypad-header' }, [
-    el('button', { class: 'keypad-close', text: '取消', onclick: () => closeKeypad() }),
-    el('span', { class: 'keypad-title', text: '输入金额' }),
-    el('button', { class: 'keypad-done', text: '完成', onclick: () => closeKeypad() })
-  ]);
-  // 数字键盘
+  // ===== 固定数字键盘（始终显示在页面底部）+ 保存按钮 =====
   const keypadGrid = el('div', { class: 'keypad' });
   const keys = ['1','2','3','4','5','6','7','8','9','.','0','⌫'];
   keys.forEach(k => {
-    const btn = el('button', {
-      text: k,
-      onclick: () => onKey(k)
-    });
+    const btn = el('button', { text: k, onclick: () => onKey(k) });
     if (k === '⌫') btn.classList.add('danger');
     keypadGrid.appendChild(btn);
   });
-  keypadPanel.append(keypadHeader, keypadGrid, el('div', { class: 'keypad-preview-row' }, [keypadPreview]));
-  keypadMask.appendChild(keypadPanel);
-  // 点击遮罩关闭
-  keypadMask.addEventListener('click', (e) => {
-    if (e.target === keypadMask) closeKeypad();
-  });
+  const saveBtn = el('button', { class: 'keypad-save', onclick: onSave }, [el('span', { text: '保存' })]);
+  const keypadRow = el('div', { class: 'keypad-row' }, [keypadGrid, saveBtn]);
+  const bottom = el('div', { class: 'add-bottom' }, [fieldsRow, keypadRow]);
 
-  function openKeypad() {
-    keypadOpen = true;
-    keypadMask.style.display = 'flex';
-    refreshKeypadPreview();
-  }
-  function closeKeypad() {
-    keypadOpen = false;
-    keypadMask.style.display = 'none';
-  }
-  function refreshKeypadPreview() {
-    keypadPreview.textContent = state.amount || '0.00';
-  }
+  // 中部内容容器（分类轮播 或 转账字段）
+  const main = el('div', { class: 'add-main' });
 
-  // Mount everything initially (decide which sections to show based on type)
-  mount.append(topbar, amountDisplay, typeTabs);
+  // 整体固定布局
+  const layout = el('div', { class: 'add-layout' }, [topbar, amountDisplay, typeTabs, main, bottom]);
+  mount.append(layout);
   applyTypeVisibility();
-  mount.append(saveBtn);
-  // keypad 作为固定定位遮罩，挂在 mount 下方便路由切换时一起被清掉
-  mount.appendChild(keypadMask);
+
+  // 进入记账页时隐藏底部 tabbar，腾出空间给固定键盘
+  document.body.classList.add('route-add');
+
+  // 返回 cleanup：路由切换时恢复 tabbar
+  return () => {
+    document.body.classList.remove('route-add');
+  };
 
   function applyTypeVisibility() {
-    // Remove optional sections if already attached
-    [catCard, transferCard, fieldsCard].forEach(node => {
-      if (node.parentNode) node.parentNode.removeChild(node);
-    });
-    // Insert before saveBtn
-    const saveIdx = Array.from(mount.children).indexOf(saveBtn);
+    main.innerHTML = '';
     if (state.type === 'transfer') {
-      mount.insertBefore(transferCard, mount.children[saveIdx]);
-      mount.insertBefore(fieldsCard, mount.children[saveIdx]);
-      // remove the account field from fieldsCard for transfer (uses from/to instead)
-      if (accountField.parentNode) accountField.parentNode.removeChild(accountField);
+      main.appendChild(transferCard);
+      accountCell.style.display = 'none';
     } else {
-      mount.insertBefore(catCard, mount.children[saveIdx]);
-      mount.insertBefore(fieldsCard, mount.children[saveIdx]);
-      // re-add account field to fieldsCard if not there
-      if (!accountField.parentNode) {
-        fieldsCard.insertBefore(accountField, fieldsCard.firstChild);
-      }
-      // 切换可见性后需要重排 carousel 宽度
+      main.appendChild(catCard);
+      accountCell.style.display = '';
       requestAnimationFrame(updateTrackPosition);
     }
   }
@@ -329,14 +282,12 @@ export async function renderAddTransaction(mount, params = {}) {
   function refreshAmount() {
     amountValue.textContent = state.amount || '0.00';
     amountValue.className = 'value ' + (state.amount ? '' : 'empty');
-    refreshKeypadPreview();
   }
   function refreshType() {
     typeBtns.expense.className = state.type === 'expense' ? 'active expense' : '';
     typeBtns.income.className = state.type === 'income' ? 'active income' : '';
     typeBtns.transfer.className = state.type === 'transfer' ? 'active transfer' : '';
     cats = allCats.filter(c => c.type === state.type);
-    // If current category doesn't match new type, clear it
     if (state.categoryId && !cats.find(c => c.id === state.categoryId)) {
       state.categoryId = null;
     }
@@ -360,12 +311,9 @@ export async function renderAddTransaction(mount, params = {}) {
       if (!state.amount) state.amount = '0';
       state.amount += '.';
     } else {
-      // Limit: max 2 decimal places
       if (state.amount.includes('.') && state.amount.split('.')[1].length >= 2) return;
-      // Limit: max integer part 8 digits
       const intPart = state.amount.split('.')[0];
       if (!state.amount.includes('.') && intPart.length >= 8) return;
-      // No leading zeros
       if (state.amount === '0') state.amount = '';
       state.amount += k;
     }
@@ -374,7 +322,6 @@ export async function renderAddTransaction(mount, params = {}) {
   async function onSave() {
     if (!state.amount || parseFloat(state.amount) <= 0) {
       toast('请输入金额');
-      openKeypad();
       return;
     }
     const amount = parseFloat(state.amount);
@@ -395,7 +342,6 @@ export async function renderAddTransaction(mount, params = {}) {
       }
       try {
         if (editId) {
-          // Update existing transfer record
           await updateTransaction(editId, {
             type: 'transfer',
             amount,
@@ -451,7 +397,6 @@ export async function renderAddTransaction(mount, params = {}) {
         toast('已保存');
       }
       vibrate(15);
-      // small delay so user sees the toast
       setTimeout(() => { location.hash = '#/'; }, 250);
     } catch (e) {
       console.error(e);

@@ -17,7 +17,6 @@ export async function renderAccountDetail(mount, { id }) {
 
   const balance = await getAccountBalance(id);
   const opening = acc.openingBalance ? Number(acc.openingBalance) : 0;
-  const netChange = balance - opening;
 
   let activeTab = 'stats'; // 'stats' | 'edit'
   let monthKey = currentMonthKey();
@@ -30,25 +29,15 @@ export async function renderAccountDetail(mount, { id }) {
     el('button', { class: 'btn-text', onclick: onDelete, style: 'color:var(--expense);' }, [el('span', { text: '删除' })])
   ]);
 
-  // 当前余额卡（按账户色）
+  // 当前余额卡（按账户色，精简：只显示余额）
   const balClass = balance < 0 ? 'expense' : '';
   const balanceCard = el('section', {
-    class: 'card summary-card',
+    class: 'card summary-card account-balance-card',
     style: `background:linear-gradient(135deg, ${acc.color} 0%, ${acc.color}cc 100%);`
   }, [
     el('div', { class: 'summary-month', text: '当前余额' }),
     el('div', { class: 'summary-balance' }, [
       el('div', { class: 'summary-amount ' + balClass, text: formatMoney(balance) })
-    ]),
-    el('div', { class: 'summary-row' }, [
-      el('div', { class: 'summary-item' }, [
-        el('div', { class: 'summary-sub-label', text: '期初余额' }),
-        el('div', { class: 'summary-sub-amount', text: formatMoney(opening) })
-      ]),
-      el('div', { class: 'summary-item' }, [
-        el('div', { class: 'summary-sub-label', text: '净变动' }),
-        el('div', { class: 'summary-sub-amount ' + (netChange >= 0 ? 'income' : 'expense'), text: (netChange >= 0 ? '+' : '') + formatMoney(netChange).replace('¥', '¥') })
-      ])
     ])
   ]);
 
@@ -97,63 +86,72 @@ export async function renderAccountDetail(mount, { id }) {
     ]);
     container.appendChild(navRow);
 
-    // 月度汇总
+    // 月度汇总（横排）
     const summary = await monthlySummary(monthKey, id);
-    const summaryRow = el('div', { class: 'summary-row', style: 'background:var(--bg);border-radius:12px;padding:12px;margin-bottom:12px;' }, [
-      el('div', { class: 'summary-item' }, [
-        el('div', { class: 'summary-sub-label', text: '收入' }),
-        el('div', { class: 'summary-sub-amount income', text: formatMoney(summary.income) })
+    const summaryRow = el('div', { class: 'stat-row', style: 'background:var(--bg);border-radius:12px;padding:12px;margin-bottom:12px;' }, [
+      el('div', { class: 'stat-cell' }, [
+        el('div', { class: 'stat-label', text: '收入' }),
+        el('div', { class: 'stat-value income', text: formatMoney(summary.income) })
       ]),
-      el('div', { class: 'summary-item' }, [
-        el('div', { class: 'summary-sub-label', text: '支出' }),
-        el('div', { class: 'summary-sub-amount expense', text: formatMoney(summary.expense) })
+      el('div', { class: 'stat-cell' }, [
+        el('div', { class: 'stat-label', text: '支出' }),
+        el('div', { class: 'stat-value expense', text: formatMoney(summary.expense) })
       ]),
-      el('div', { class: 'summary-item' }, [
-        el('div', { class: 'summary-sub-label', text: '结余' }),
-        el('div', { class: 'summary-sub-amount', text: formatMoney(summary.balance) })
+      el('div', { class: 'stat-cell' }, [
+        el('div', { class: 'stat-label', text: '结余' }),
+        el('div', { class: 'stat-value', text: formatMoney(summary.balance) })
       ])
     ]);
     container.appendChild(summaryRow);
 
-    // 折线图（该账户本月每日趋势）
+    // 折线图（该账户每日末余额，含期初与转账）
     const chartCard = el('section', { class: 'card chart-card' }, [
-      el('div', { class: 'card-title', text: '每日趋势' })
+      el('div', { class: 'card-title', text: '账户余额趋势' })
     ]);
     const canvas = el('canvas', { style: 'width:100%;height:200px;' });
     chartCard.appendChild(canvas);
     container.appendChild(chartCard);
 
-    // 按日聚合该账户交易
-    const txs = await listTransactions({ accountId: id, dateFrom: range.start, dateTo: range.end });
-    const dailyMap = new Map();
-    txs.forEach(t => {
-      if (t.type === 'transfer') return; // 转账不计入收支趋势
-      const cur = dailyMap.get(t.date) || 0;
-      if (t.type === 'income') dailyMap.set(t.date, cur + t.amount);
-      else if (t.type === 'expense') dailyMap.set(t.date, cur - t.amount);
-    });
+    // 计算每日末余额：从期初累加该账户所有交易（含转账），截至当月末
+    const allAccTx = await listTransactions({ accountId: id });
+    const txAsc = allAccTx.filter(t => t.date <= range.end).sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+    let runBal = opening;
+    let ti = 0;
+    // 跳过月初之前的交易（已累加进 runBal）
+    while (ti < txAsc.length && txAsc[ti].date < range.start) {
+      runBal += txDelta(txAsc[ti], id);
+      ti++;
+    }
     const dates = listDates(range.start, range.end);
-    const lineData = dates.map(d => ({
-      label: d.slice(8),
-      value: dailyMap.get(d) || 0,
-      fullLabel: d
-    }));
-
-    // 延迟绘制（等 canvas 挂载）
-    requestAnimationFrame(() => {
-      drawLineChart(canvas, lineData, { color: acc.color });
+    const lineData = dates.map(d => {
+      while (ti < txAsc.length && txAsc[ti].date === d) {
+        runBal += txDelta(txAsc[ti], id);
+        ti++;
+      }
+      return { label: d.slice(8), value: round2(runBal), fullLabel: d };
     });
 
-    // 最近交易列表（该账户）
+    let chartSelected = null;
+    const drawChartNow = () => drawLineChart(canvas, lineData, {
+      color: acc.color,
+      selected: chartSelected,
+      onSelect: (idx) => { chartSelected = idx; drawChartNow(); },
+      valueFormatter: (v) => formatMoney(v)
+    });
+    // 延迟绘制（等 canvas 挂载）
+    requestAnimationFrame(drawChartNow);
+
+    // 最近交易列表（该账户，本月）
+    const monthTxs = allAccTx.filter(t => t.date >= range.start && t.date <= range.end);
     const txCard = el('section', { class: 'card' }, [
-      el('div', { class: 'card-title', text: '本月交易（' + txs.length + '笔）' })
+      el('div', { class: 'card-title', text: '本月交易（' + monthTxs.length + '笔）' })
     ]);
     const catMap = await getCategoriesMap();
-    if (txs.length === 0) {
+    if (monthTxs.length === 0) {
       txCard.appendChild(el('div', { class: 'empty', style: 'padding:20px 0;' }, [el('p', { text: '本月暂无交易' })]));
     } else {
       const list = el('div', {});
-      const recent = txs.slice(0, 20);
+      const recent = monthTxs.slice(0, 20);
       for (const t of recent) {
         let nameText, amountText, amountClass;
         if (t.type === 'transfer') {
@@ -311,6 +309,20 @@ function shiftMonth(monthKey, delta) {
   const d = new Date(y, m - 1 + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+// 单笔交易对该账户余额的影响（收入+，支出-，转出-，转入+）
+function txDelta(t, accountId) {
+  let d = 0;
+  if (t.accountId === accountId) {
+    if (t.type === 'income') d += t.amount;
+    else if (t.type === 'expense') d -= t.amount;
+    else if (t.type === 'transfer') d -= t.amount;
+  }
+  if (t.toAccountId === accountId && t.type === 'transfer') d += t.amount;
+  return d;
+}
+
+function round2(n) { return Math.round(n * 100) / 100; }
 
 // 获取账户名（缓存）
 let _accMapCache = null;

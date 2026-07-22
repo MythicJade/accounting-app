@@ -155,19 +155,15 @@ export async function renderHome(mount) {
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
         }
-        // 两行布局：第一行 = 名称 + 金额；第二行 = 备注 + 账户名
-        // icon 跨两行，垂直居中
+        // 两列布局：左 = 图标 + 分类名（垂直居中）；右 = 金额（上） + 账户名（下）
         const item = el('div', { class: 'tx-item', dataset: { id: t.id } }, [
-          iconNode,
-          el('div', { class: 'meta' }, [
-            el('div', { class: 'top' }, [
-              el('span', { class: 'name', text: nameText }),
-              el('span', { class: 'amount ' + amountClass, text: amountText })
-            ]),
-            el('div', { class: 'bottom' }, [
-              el('span', { class: 'note', text: t.note || '' }),
-              accountName ? el('span', { class: 'account-name', text: accountName }) : null
-            ].filter(Boolean))
+          el('div', { class: 'tx-left' }, [
+            iconNode,
+            el('span', { class: 'name', text: nameText })
+          ]),
+          el('div', { class: 'tx-right' }, [
+            el('span', { class: 'amount ' + amountClass, text: amountText }),
+            ...(accountName ? [el('span', { class: 'account-name', text: accountName })] : [])
           ])
         ]);
         item.addEventListener('click', () => { location.hash = '#/edit/' + t.id; });
