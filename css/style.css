@@ -203,7 +203,7 @@ input, select, textarea { font: inherit; color: inherit; }
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 16px; flex-shrink: 0;
 }
-.tx-item .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tx-item .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; justify-content: center; }
 .tx-item .meta .top {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
 }

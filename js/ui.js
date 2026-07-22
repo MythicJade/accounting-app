@@ -82,6 +82,8 @@ export function promptDialog({ title = '输入', label = '', defaultValue = '', 
   input.type = inputType;
   input.value = defaultValue;
   input.placeholder = placeholder;
+
+  let bodyEl = input;
   if (label) {
     const lab = document.createElement('label');
     lab.className = 'field';
@@ -90,28 +92,13 @@ export function promptDialog({ title = '输入', label = '', defaultValue = '', 
     const wrap = document.createElement('div');
     wrap.appendChild(lab);
     wrap.appendChild(input);
-    return showModal({
-      title,
-      body: wrap,
-      actions: [
-        { label: '取消', type: 'ghost', value: null },
-        { label: okText, type: 'primary', onClick: () => {
-          if (!input.value.trim()) { toast('请输入内容'); return false; }
-          // resolve with value
-          const v = inputType === 'number' ? parseFloat(input.value) : input.value;
-          // close manually - trick: set value then trigger
-          const evt = new CustomEvent('resolve', { detail: v });
-          input.dispatchEvent(evt);
-          return true;
-        } }
-      ]
-    }).then(() => null); // we'll override
+    bodyEl = wrap;
   }
-  // Simplified: just show input, return value via promise
+
   return new Promise((resolve) => {
     showModal({
       title,
-      body: input,
+      body: bodyEl,
       actions: [
         { label: '取消', type: 'ghost', value: null },
         { label: okText, type: 'primary', value: 'ok', onClick: () => {
@@ -148,9 +135,17 @@ export function escapeHtml(str) {
 }
 
 export function el(tag, props = {}, children = []) {
-  const node = document.createElement(tag);
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const SVG_TAGS = new Set(['svg','path','circle','rect','line','polyline','polygon','ellipse','g','defs','use','text','tspan','linearGradient','radialGradient','stop']);
+  const isSVG = SVG_TAGS.has(tag);
+  const node = isSVG
+    ? document.createElementNS(SVG_NS, tag)
+    : document.createElement(tag);
   for (const k in props) {
-    if (k === 'class') node.className = props[k];
+    if (k === 'class') {
+      if (isSVG) node.setAttribute('class', props[k]);
+      else node.className = props[k];
+    }
     else if (k === 'html') node.innerHTML = props[k];
     else if (k === 'text') node.textContent = props[k];
     else if (k.startsWith('on') && typeof props[k] === 'function') {
