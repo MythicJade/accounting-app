@@ -392,6 +392,20 @@ body.route-add .view {
   overflow: hidden;
 }
 
+/* 顶部一行：返回按钮 + 类型 tabs + （删除），取代原「记一笔」标题栏 */
+.add-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: var(--safe-top);
+  padding-bottom: 4px;
+  flex-shrink: 0;
+}
+.add-top-row .add-back { flex-shrink: 0; }
+.add-top-row .add-type-tabs { flex: 1; margin-bottom: 0; }
+.add-top-row .add-del-btn { flex-shrink: 0; font-size: 13px; }
+.add-top-row .add-right-spacer { width: 32px; flex-shrink: 0; }
+
 /* 精简金额显示（固定布局下减小占用） */
 .amount-compact {
   padding: 14px 20px;

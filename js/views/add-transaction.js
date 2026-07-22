@@ -37,27 +37,32 @@ export async function renderAddTransaction(mount, params = {}) {
   let cats = allCats.filter(c => c.type === state.type);
 
   // === Build DOM ===
-  const topbar = el('header', { class: 'topbar' }, [
-    el('button', { class: 'back', onclick: () => location.hash = '#/' }, [
-      el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
-    ]),
-    el('h1', { text: editId ? '编辑记录' : '记一笔' }),
-    editId ? el('button', { class: 'btn-text danger', onclick: () => onDelete(editId) }, [el('span', { text: '删除' })]) : el('span')
+  // 返回按钮
+  const backBtn = el('button', { class: 'back add-back', onclick: () => location.hash = '#/' }, [
+    el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
   ]);
+
+  // Type tabs (支出 / 收入 / 转账) — 与返回按钮同处顶部一行
+  const typeBtns = {};
+  const typeTabs = el('div', { class: 'type-tabs type-tabs-3 add-type-tabs' }, [
+    typeBtns.expense = el('button', { class: state.type === 'expense' ? 'active expense' : '', text: '支出', onclick: () => setType('expense') }),
+    typeBtns.income = el('button', { class: state.type === 'income' ? 'active income' : '', text: '收入', onclick: () => setType('income') }),
+    typeBtns.transfer = el('button', { class: state.type === 'transfer' ? 'active transfer' : '', text: '转账', onclick: () => setType('transfer') })
+  ]);
+
+  // 编辑模式右侧放删除按钮，否则占位保持对称
+  const rightSlot = editId
+    ? el('button', { class: 'btn-text danger add-del-btn', onclick: () => onDelete(editId) }, [el('span', { text: '删除' })])
+    : el('span', { class: 'add-right-spacer' });
+
+  // 顶部一行：返回 + 类型 tabs + （删除）
+  const topRow = el('div', { class: 'add-top-row' }, [backBtn, typeTabs, rightSlot]);
 
   // Amount display（键盘固定显示，无需点击弹窗）
   const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'empty'), text: state.amount || '0.00' });
   const amountDisplay = el('div', { class: 'amount-display amount-compact' }, [
     el('span', { class: 'currency', text: '¥' }),
     amountValue
-  ]);
-
-  // Type tabs (支出 / 收入 / 转账)
-  const typeBtns = {};
-  const typeTabs = el('div', { class: 'type-tabs type-tabs-3' }, [
-    typeBtns.expense = el('button', { class: state.type === 'expense' ? 'active expense' : '', text: '支出', onclick: () => setType('expense') }),
-    typeBtns.income = el('button', { class: state.type === 'income' ? 'active income' : '', text: '收入', onclick: () => setType('income') }),
-    typeBtns.transfer = el('button', { class: state.type === 'transfer' ? 'active transfer' : '', text: '转账', onclick: () => setType('transfer') })
   ]);
 
   // ===== Category carousel (5 cols × 2 rows per page, horizontal swipe) =====
@@ -255,7 +260,7 @@ export async function renderAddTransaction(mount, params = {}) {
   const main = el('div', { class: 'add-main' });
 
   // 整体固定布局
-  const layout = el('div', { class: 'add-layout' }, [topbar, amountDisplay, typeTabs, main, bottom]);
+  const layout = el('div', { class: 'add-layout' }, [topRow, amountDisplay, main, bottom]);
   mount.append(layout);
   applyTypeVisibility();
 

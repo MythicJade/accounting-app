@@ -1,6 +1,6 @@
-// js/views/account-detail.js — 账户详情页：月度统计 + 编辑信息 tab 切换
+// js/views/account-detail.js — 账户详情页：年度统计 + 编辑信息 tab 切换
 import { getAccount, updateAccount, deleteAccount } from '../accounts.js';
-import { listTransactions, monthlySummary, getAccountBalance } from '../store.js';
+import { listTransactions, monthlySummary, getAccountBalance, sumByType } from '../store.js';
 import { getAccountsMap } from '../accounts.js';
 import { listCategories } from '../categories.js';
 import { formatMoney, currentMonthKey, monthKeyToLabel, todayStr, getRange, shiftRange, rangeLabel, listDates, monthKeyFromDateStr } from '../format.js';
@@ -19,7 +19,7 @@ export async function renderAccountDetail(mount, { id }) {
   const opening = acc.openingBalance ? Number(acc.openingBalance) : 0;
 
   let activeTab = 'stats'; // 'stats' | 'edit'
-  let monthKey = currentMonthKey();
+  let year = String(new Date().getFullYear());
 
   const topbar = el('header', { class: 'topbar' }, [
     el('button', { class: 'back', onclick: () => location.hash = '#/accounts' }, [
@@ -72,22 +72,23 @@ export async function renderAccountDetail(mount, { id }) {
     }
   }
 
-  // === 月度统计 tab ===
+  // === 年度统计 tab ===
   async function renderStatsTab(container) {
-    // 月份导航
-    const [y, m] = monthKey.split('-').map(Number);
-    const refDate = new Date(y, m - 1, 1);
-    const range = getRange('month', refDate);
+    const yNum = Number(year);
+    const yearStart = year + '-01-01';
+    const yearEnd = year + '-12-31';
+    const today = todayStr();
 
+    // 年份导航
     const navRow = el('div', { class: 'between items-center range-nav', style: 'margin-bottom:12px;' }, [
-      el('button', { class: 'range-btn', onclick: () => { monthKey = shiftMonth(monthKey, -1); renderTab(); }, text: '‹' }),
-      el('span', { class: 'range-label', text: monthKeyToLabel(monthKey) }),
-      el('button', { class: 'range-btn', onclick: () => { monthKey = shiftMonth(monthKey, 1); renderTab(); }, text: '›' })
+      el('button', { class: 'range-btn', onclick: () => { year = String(yNum - 1); renderTab(); }, text: '‹' }),
+      el('span', { class: 'range-label', text: year + '年' }),
+      el('button', { class: 'range-btn', onclick: () => { year = String(yNum + 1); renderTab(); }, text: '›' })
     ]);
     container.appendChild(navRow);
 
-    // 月度汇总（横排）
-    const summary = await monthlySummary(monthKey, id);
+    // 年度汇总（横排）
+    const summary = await sumByType(yearStart, yearEnd, id);
     const summaryRow = el('div', { class: 'stat-row', style: 'background:var(--bg);border-radius:12px;padding:12px;margin-bottom:12px;' }, [
       el('div', { class: 'stat-cell' }, [
         el('div', { class: 'stat-label', text: '收入' }),
@@ -104,32 +105,30 @@ export async function renderAccountDetail(mount, { id }) {
     ]);
     container.appendChild(summaryRow);
 
-    // 折线图（该账户每日末余额，含期初与转账）
+    // 折线图（1-12 月每月末余额；未到月底的月份用当前余额）
     const chartCard = el('section', { class: 'card chart-card' }, [
-      el('div', { class: 'card-title', text: '账户余额趋势' })
+      el('div', { class: 'card-title', text: '账户余额趋势（按月）' })
     ]);
     const canvas = el('canvas', { style: 'width:100%;height:200px;' });
     chartCard.appendChild(canvas);
     container.appendChild(chartCard);
 
-    // 计算每日末余额：从期初累加该账户所有交易（含转账），截至当月末
+    // 计算每月末余额：期初 + 截至「该月末或今天」的累计交易影响（含转账）
     const allAccTx = await listTransactions({ accountId: id });
-    const txAsc = allAccTx.filter(t => t.date <= range.end).sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
-    let runBal = opening;
-    let ti = 0;
-    // 跳过月初之前的交易（已累加进 runBal）
-    while (ti < txAsc.length && txAsc[ti].date < range.start) {
-      runBal += txDelta(txAsc[ti], id);
-      ti++;
-    }
-    const dates = listDates(range.start, range.end);
-    const lineData = dates.map(d => {
-      while (ti < txAsc.length && txAsc[ti].date === d) {
-        runBal += txDelta(txAsc[ti], id);
-        ti++;
+    const txAsc = allAccTx.slice().sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+    const lineData = [];
+    for (let m = 1; m <= 12; m++) {
+      const lastDayDate = new Date(yNum, m, 0);
+      const lastDay = year + '-' + String(m).padStart(2, '0') + '-' + String(lastDayDate.getDate()).padStart(2, '0');
+      // 未到月底则用今天作为截止
+      const cutoff = lastDay < today ? lastDay : today;
+      let bal = opening;
+      for (const t of txAsc) {
+        if (t.date <= cutoff) bal += txDelta(t, id);
+        else break;
       }
-      return { label: d.slice(8), value: round2(runBal), fullLabel: d };
-    });
+      lineData.push({ label: m + '月', value: round2(bal), fullLabel: year + '年' + m + '月' });
+    }
 
     let chartSelected = null;
     const drawChartNow = () => drawLineChart(canvas, lineData, {
@@ -141,17 +140,17 @@ export async function renderAccountDetail(mount, { id }) {
     // 延迟绘制（等 canvas 挂载）
     requestAnimationFrame(drawChartNow);
 
-    // 最近交易列表（该账户，本月）
-    const monthTxs = allAccTx.filter(t => t.date >= range.start && t.date <= range.end);
+    // 本年交易列表
+    const yearTxs = allAccTx.filter(t => t.date >= yearStart && t.date <= yearEnd);
     const txCard = el('section', { class: 'card' }, [
-      el('div', { class: 'card-title', text: '本月交易（' + monthTxs.length + '笔）' })
+      el('div', { class: 'card-title', text: '本年交易（' + yearTxs.length + '笔）' })
     ]);
     const catMap = await getCategoriesMap();
-    if (monthTxs.length === 0) {
-      txCard.appendChild(el('div', { class: 'empty', style: 'padding:20px 0;' }, [el('p', { text: '本月暂无交易' })]));
+    if (yearTxs.length === 0) {
+      txCard.appendChild(el('div', { class: 'empty', style: 'padding:20px 0;' }, [el('p', { text: '本年暂无交易' })]));
     } else {
       const list = el('div', {});
-      const recent = monthTxs.slice(0, 20);
+      const recent = yearTxs.slice(0, 20);
       for (const t of recent) {
         let nameText, amountText, amountClass;
         if (t.type === 'transfer') {
@@ -301,13 +300,6 @@ export async function renderAccountDetail(mount, { id }) {
     mount.removeEventListener('touchstart', onStart);
     mount.removeEventListener('touchend', onEnd);
   };
-}
-
-// 月份加减：'YYYY-MM' 加减 N 个月
-function shiftMonth(monthKey, delta) {
-  const [y, m] = monthKey.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 // 单笔交易对该账户余额的影响（收入+，支出-，转出-，转入+）
