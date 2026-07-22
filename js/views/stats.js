@@ -40,10 +40,6 @@ function ensureRange() {
 export async function renderStats(mount) {
   ensureRange();
 
-  const topbar = el('header', { class: 'topbar' }, [
-    el('h1', { text: '统计' })
-  ]);
-
   // Account filter chips
   const accounts = await listAccounts();
   const accountChips = el('div', { class: 'account-chips' });
@@ -206,7 +202,7 @@ export async function renderStats(mount) {
   const rankList = el('div');
   rankCard.appendChild(rankList);
 
-  mount.append(topbar, accountChips, periodTabs, rangeNav, customPanel, typeToggle, summaryRow, pieCard, lineCard, rankCard);
+  mount.append(accountChips, periodTabs, rangeNav, customPanel, typeToggle, summaryRow, pieCard, lineCard, rankCard);
 
   // Render function (re-renders in place)
   async function render() {

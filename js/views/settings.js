@@ -5,10 +5,6 @@ import { toast, confirmDialog, showModal, el } from '../ui.js';
 import { router } from '../router.js';
 
 export async function renderSettings(mount) {
-  const topbar = el('header', { class: 'topbar' }, [
-    el('h1', { text: '我的' })
-  ]);
-
   const count = await countTransactions();
 
   // Data group
@@ -117,7 +113,7 @@ export async function renderSettings(mount) {
     el('div', { class: 'text-sm', text: '纯本地离线运行 · 数据不离开你的设备' })
   ]);
 
-  mount.append(topbar, dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
+  mount.append(dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
 
   // Hidden file input for import
   const fileInput = document.createElement('input');

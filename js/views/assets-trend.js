@@ -80,17 +80,17 @@ export async function renderAssetsTrend(mount) {
       {
         label: '净资产',
         color: '#52C41A',
-        data: validData.map(d => ({ label: d.label, value: Math.max(0, d.netAssets), fullLabel: year + '年' + d.label }))
+        data: validData.map(d => ({ label: d.label, value: d.netAssets, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总资产',
         color: '#1677FF',
-        data: validData.map(d => ({ label: d.label, value: Math.max(0, d.totalAssets || 0), fullLabel: year + '年' + d.label }))
+        data: validData.map(d => ({ label: d.label, value: d.totalAssets || 0, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总负债',
         color: '#FF4D4F',
-        data: validData.map(d => ({ label: d.label, value: Math.max(0, d.totalLiabilities || 0), fullLabel: year + '年' + d.label }))
+        data: validData.map(d => ({ label: d.label, value: d.totalLiabilities || 0, fullLabel: year + '年' + d.label }))
       }
     ];
 
@@ -137,4 +137,32 @@ export async function renderAssetsTrend(mount) {
     tableCard.appendChild(table);
     content.appendChild(tableCard);
   }
+
+  // 右滑返回账户管理
+  let touchStartX = 0, touchStartY = 0, touchActive = false;
+  const onStart = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchActive = true;
+  };
+  const onEnd = (e) => {
+    if (!touchActive) return;
+    touchActive = false;
+    const touch = e.changedTouches ? e.changedTouches[0] : e;
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    // 右滑返回：deltaX > 80 且水平为主（避免误触发垂直滚动）
+    if (deltaX > 80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+      location.hash = '#/accounts';
+    }
+  };
+  mount.addEventListener('touchstart', onStart, { passive: true });
+  mount.addEventListener('touchend', onEnd, { passive: true });
+
+  // 返回 cleanup，路由切换时移除监听
+  return () => {
+    mount.removeEventListener('touchstart', onStart);
+    mount.removeEventListener('touchend', onEnd);
+  };
 }

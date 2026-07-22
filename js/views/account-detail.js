@@ -135,7 +135,7 @@ export async function renderAccountDetail(mount, { id }) {
     const dates = listDates(range.start, range.end);
     const lineData = dates.map(d => ({
       label: d.slice(8),
-      value: Math.max(0, dailyMap.get(d) || 0),
+      value: dailyMap.get(d) || 0,
       fullLabel: d
     }));
 
@@ -275,6 +275,34 @@ export async function renderAccountDetail(mount, { id }) {
       toast('删除失败：' + (e.message || e));
     }
   }
+
+  // 右滑返回账户管理
+  let touchStartX = 0, touchStartY = 0, touchActive = false;
+  const onStart = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchActive = true;
+  };
+  const onEnd = (e) => {
+    if (!touchActive) return;
+    touchActive = false;
+    const touch = e.changedTouches ? e.changedTouches[0] : e;
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    // 右滑返回：deltaX > 80 且水平为主（避免误触发垂直滚动）
+    if (deltaX > 80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+      location.hash = '#/accounts';
+    }
+  };
+  mount.addEventListener('touchstart', onStart, { passive: true });
+  mount.addEventListener('touchend', onEnd, { passive: true });
+
+  // 返回 cleanup，路由切换时移除监听
+  return () => {
+    mount.removeEventListener('touchstart', onStart);
+    mount.removeEventListener('touchend', onEnd);
+  };
 }
 
 // 月份加减：'YYYY-MM' 加减 N 个月

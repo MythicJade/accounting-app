@@ -1,5 +1,5 @@
 /* PWA Cache shell */
-const CACHE_NAME = 'accounting-v12';
+const CACHE_NAME = 'accounting-v13';
 const PRECACHE_URLS = [
   './',
   './index.html',

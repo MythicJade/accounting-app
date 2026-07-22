@@ -27,9 +27,13 @@ export function drawLineChart(canvas, data, options = {}) {
   const h = cssH - pad.top - pad.bottom;
 
   const values = data.map(d => d.value);
-  const maxVal = Math.max(1, ...values);
-  const niceMax = niceNumber(maxVal);
-  const minVal = 0;
+  // 支持负值：Y 轴范围同时考虑正负
+  const rawMax = Math.max(...values, 0);
+  const rawMin = Math.min(...values, 0);
+  const niceMax = niceNumber(rawMax || 1);
+  const minVal = rawMin < 0 ? -niceNumber(-rawMin) : 0;
+  const range = (niceMax - minVal) || 1;
+  const zeroY = pad.top + h - ((0 - minVal) / range) * h;
 
   // Y-axis grid lines + labels
   ctx.strokeStyle = '#F3F4F6';
@@ -44,8 +48,18 @@ export function drawLineChart(canvas, data, options = {}) {
     ctx.moveTo(pad.left, y);
     ctx.lineTo(pad.left + w, y);
     ctx.stroke();
-    const val = (niceMax / gridLines) * i;
+    const val = minVal + (range / gridLines) * i;
     ctx.fillText(formatShort(val), pad.left - 6, y);
+  }
+
+  // 零基线（存在负值时）
+  if (minVal < 0 && niceMax > 0) {
+    ctx.strokeStyle = '#D1D5DB';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, zeroY);
+    ctx.lineTo(pad.left + w, zeroY);
+    ctx.stroke();
   }
 
   // X-axis labels (subset to avoid clutter)
@@ -65,7 +79,7 @@ export function drawLineChart(canvas, data, options = {}) {
   const points = data.map((d, i) => ({
     index: i,
     x: pad.left + (w / Math.max(1, data.length - 1)) * i,
-    y: pad.top + h - ((d.value - minVal) / (niceMax - minVal)) * h,
+    y: pad.top + h - ((d.value - minVal) / range) * h,
     value: d.value,
     label: d.label,
     fullLabel: d.fullLabel || d.label
@@ -82,9 +96,9 @@ export function drawLineChart(canvas, data, options = {}) {
     gradient.addColorStop(0, hexToRgba(lineColor, 0.25));
     gradient.addColorStop(1, hexToRgba(lineColor, 0));
     ctx.beginPath();
-    ctx.moveTo(points[0].x, pad.top + h);
+    ctx.moveTo(points[0].x, zeroY);
     points.forEach(p => ctx.lineTo(p.x, p.y));
-    ctx.lineTo(points[points.length - 1].x, pad.top + h);
+    ctx.lineTo(points[points.length - 1].x, zeroY);
     ctx.closePath();
     ctx.fillStyle = gradient;
     ctx.fill();
@@ -207,12 +221,15 @@ export function drawMultiLineChart(canvas, series, options = {}) {
   const w = cssW - pad.left - pad.right;
   const h = cssH - pad.top - pad.bottom;
 
-  // 计算所有系列的统一 Y 轴范围
+  // 计算所有系列的统一 Y 轴范围（支持负值）
   const allValues = [];
   validSeries.forEach(s => s.data.forEach(d => { if (d.value != null) allValues.push(d.value); }));
-  const maxVal = Math.max(1, ...allValues);
-  const niceMax = niceNumber(maxVal);
-  const minVal = 0;
+  const rawMax = Math.max(...allValues, 0);
+  const rawMin = Math.min(...allValues, 0);
+  const niceMax = niceNumber(rawMax || 1);
+  const minVal = rawMin < 0 ? -niceNumber(-rawMin) : 0;
+  const range = (niceMax - minVal) || 1;
+  const zeroY = pad.top + h - ((0 - minVal) / range) * h;
 
   // Y 轴网格 + 标签
   ctx.strokeStyle = '#F3F4F6';
@@ -227,8 +244,18 @@ export function drawMultiLineChart(canvas, series, options = {}) {
     ctx.moveTo(pad.left, y);
     ctx.lineTo(pad.left + w, y);
     ctx.stroke();
-    const val = (niceMax / gridLines) * i;
+    const val = minVal + (range / gridLines) * i;
     ctx.fillText(formatShort(val), pad.left - 6, y);
+  }
+
+  // 零基线（存在负值时）
+  if (minVal < 0 && niceMax > 0) {
+    ctx.strokeStyle = '#D1D5DB';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, zeroY);
+    ctx.lineTo(pad.left + w, zeroY);
+    ctx.stroke();
   }
 
   // X 轴标签（用第一个系列的 labels）
@@ -252,7 +279,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
       index: i,
       seriesIndex: sIdx,
       x: pad.left + (w / Math.max(1, s.data.length - 1)) * i,
-      y: pad.top + h - ((d.value - minVal) / (niceMax - minVal)) * h,
+      y: pad.top + h - ((d.value - minVal) / range) * h,
       value: d.value,
       label: d.label,
       fullLabel: d.fullLabel || d.label,
@@ -493,7 +520,9 @@ function niceNumber(n) {
 }
 
 function formatShort(n) {
-  if (n >= 10000) return (n / 10000).toFixed(1) + '万';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 10000) return sign + (abs / 10000).toFixed(1) + '万';
+  if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k';
   return Math.round(n).toString();
 }

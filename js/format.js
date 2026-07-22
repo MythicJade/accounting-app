@@ -13,7 +13,8 @@ export function formatMoney(n, withSign = false) {
     const sign = n < 0 ? '-' : '+';
     return sign + '¥' + s;
   }
-  return '¥' + s;
+  // 负数显示 -¥，正数显示 ¥
+  return (n < 0 ? '-¥' : '¥') + s;
 }
 
 export function formatMoneyPlain(n) {

@@ -36,17 +36,9 @@ export async function renderHome(mount) {
 
   const nodes = [];
 
-  // Header
-  nodes.push(el('header', { class: 'topbar' }, [
-    el('h1', { text: '我的记账' }),
-    el('button', { class: 'btn-text', onclick: () => location.hash = '#/settings' }, [
-      el('span', { text: '⚙️' })
-    ])
-  ]));
-
-  // 右滑进入账户管理提示（仅首次显示）
+  // 左滑进入账户管理提示（仅首次显示）
   if (!localStorage.getItem('swipe_hint_shown')) {
-    const hint = el('div', { class: 'swipe-hint', text: '右滑管理账户 →' });
+    const hint = el('div', { class: 'swipe-hint', text: '← 左滑管理账户' });
     nodes.push(hint);
     setTimeout(() => {
       localStorage.setItem('swipe_hint_shown', '1');
@@ -194,7 +186,7 @@ export async function renderHome(mount) {
 
   mount.append(...nodes);
 
-  // 右滑手势：从屏幕左边缘右滑进入账户管理页
+  // 左滑手势：从屏幕向左滑动进入账户管理页
   let touchStartX = 0, touchStartY = 0, touchActive = false;
   const onStart = (e) => {
     const touch = e.touches ? e.touches[0] : e;
@@ -208,8 +200,8 @@ export async function renderHome(mount) {
     const touch = e.changedTouches ? e.changedTouches[0] : e;
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
-    // 右滑：deltaX > 80 且水平为主（避免误触发垂直滚动）
-    if (deltaX > 80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+    // 左滑：deltaX < -80 且水平为主（避免误触发垂直滚动）
+    if (deltaX < -80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
       location.hash = '#/accounts';
     }
   };
