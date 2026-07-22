@@ -74,6 +74,21 @@ export function friendlyDate(dateStr) {
   return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
+// 日期 + 星期：用于首页按日分组的日期头，如 "今天 周一" / "1月15日 周三"
+export function dateWithWeekday(dateStr) {
+  if (!dateStr) return '';
+  const today = new Date();
+  const todayStr_ = formatDateStr(today);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yStr = formatDateStr(yesterday);
+  const d = new Date(dateStr + 'T00:00:00');
+  const weekday = '周' + WEEK_DAYS[d.getDay()];
+  if (dateStr === todayStr_) return '今天 ' + weekday;
+  if (dateStr === yStr) return '昨天 ' + weekday;
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+}
+
 export function formatTime(ts) {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;

@@ -2,8 +2,10 @@
 import { addTransaction, updateTransaction, getTransaction, deleteTransaction, transferMoney } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
-import { todayStr, formatDateStr } from '../format.js';
+import { todayStr } from '../format.js';
 import { toast, confirmDialog, vibrate, el } from '../ui.js';
+
+const CATS_PER_PAGE = 10; // 5 列 × 2 行
 
 export async function renderAddTransaction(mount, params = {}) {
   const editId = params.id ? Number(params.id) : null;
@@ -42,11 +44,12 @@ export async function renderAddTransaction(mount, params = {}) {
     editId ? el('button', { class: 'btn-text danger', onclick: () => onDelete(editId) }, [el('span', { text: '删除' })]) : el('span')
   ]);
 
-  // Amount display
+  // Amount display — 点击后弹出数字键盘
   const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'empty'), text: state.amount || '0.00' });
-  const amountDisplay = el('div', { class: 'amount-display' }, [
+  const amountDisplay = el('div', { class: 'amount-display amount-tapable', onclick: () => openKeypad() }, [
     el('span', { class: 'currency', text: '¥' }),
-    amountValue
+    amountValue,
+    el('span', { class: 'amount-tap-hint', text: '点击输入' })
   ]);
 
   // Type tabs (支出 / 收入 / 转账)
@@ -57,34 +60,132 @@ export async function renderAddTransaction(mount, params = {}) {
     typeBtns.transfer = el('button', { class: state.type === 'transfer' ? 'active transfer' : '', text: '转账', onclick: () => setType('transfer') })
   ]);
 
-  // Category grid (hidden for transfer)
-  const catGrid = el('div', { class: 'cat-grid' });
+  // ===== Category carousel (5 cols × 2 rows per page, horizontal swipe) =====
+  // 结构：.cat-carousel > .cat-pages-track (transform 移动) > .cat-page (10 项)
+  //       .cat-dots (页码指示器)
+  const catCarousel = el('div', { class: 'cat-carousel' });
+  const catTrack = el('div', { class: 'cat-pages-track' });
+  catCarousel.appendChild(catTrack);
+  const catDots = el('div', { class: 'cat-dots' });
+  let currentPageIdx = 0;
+
   function renderCats() {
-    catGrid.innerHTML = '';
+    catTrack.innerHTML = '';
+    catDots.innerHTML = '';
     if (cats.length === 0) {
-      const empty = el('div', { class: 'empty', style: 'grid-column:1/-1;padding:16px 8px;' }, [
+      const empty = el('div', { class: 'empty', style: 'padding:16px 8px;' }, [
         el('p', { text: '暂无' + (state.type === 'income' ? '收入' : '支出') + '分类' }),
         el('button', { class: 'btn', style: 'margin-top:8px;background:var(--c-primary);color:#fff;', onclick: () => location.hash = '#/categories' }, [el('span', { text: '去创建分类' })])
       ]);
-      catGrid.appendChild(empty);
+      catTrack.appendChild(empty);
       return;
     }
-    cats.forEach(c => {
-      const item = el('div', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), onclick: () => selectCat(c.id) }, [
-        el('div', { class: 'cat-icon', style: `background:${c.color}22;color:${c.color}` }, [document.createTextNode(c.icon)]),
-        el('div', { class: 'cat-name', text: c.name })
-      ]);
-      catGrid.appendChild(item);
-    });
-    // 末尾追加一个"+"按钮，便于跳转到分类管理
-    const addBtn = el('div', { class: 'cat-item', onclick: () => location.hash = '#/categories' }, [
-      el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#999;border:2px dashed #ccc;' }, [document.createTextNode('+')]),
-      el('div', { class: 'cat-name', text: '管理' })
-    ]);
-    catGrid.appendChild(addBtn);
+    // 在末尾追加一个"+"按钮（用于跳转到分类管理）
+    const itemsWithAdd = cats.concat([{ _isAdd: true }]);
+    // 按 10 项分页
+    const pageCount = Math.ceil(itemsWithAdd.length / CATS_PER_PAGE);
+    for (let p = 0; p < pageCount; p++) {
+      const pageItems = itemsWithAdd.slice(p * CATS_PER_PAGE, (p + 1) * CATS_PER_PAGE);
+      const page = el('div', { class: 'cat-page' });
+      pageItems.forEach(c => {
+        let item;
+        if (c._isAdd) {
+          item = el('div', { class: 'cat-item', onclick: () => location.hash = '#/categories' }, [
+            el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#999;border:2px dashed #ccc;' }, [document.createTextNode('+')]),
+            el('div', { class: 'cat-name', text: '管理' })
+          ]);
+        } else {
+          item = el('div', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), onclick: () => selectCat(c.id) }, [
+            el('div', { class: 'cat-icon', style: `background:${c.color}22;color:${c.color}` }, [document.createTextNode(c.icon)]),
+            el('div', { class: 'cat-name', text: c.name })
+          ]);
+        }
+        page.appendChild(item);
+      });
+      catTrack.appendChild(page);
+      // 页码指示器圆点
+      const dot = el('span', { class: 'cat-dot' + (p === 0 ? ' active' : '') });
+      catDots.appendChild(dot);
+    }
+    // 显示页码指示器（多于 1 页才显示）
+    catDots.style.display = pageCount > 1 ? 'flex' : 'none';
+    currentPageIdx = 0;
+    updateTrackPosition();
   }
+
+  function updateTrackPosition() {
+    const pages = catTrack.children;
+    if (pages.length === 0) return;
+    const carouselWidth = catCarousel.clientWidth || 320;
+    catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth}px)`;
+    // 更新指示器
+    Array.from(catDots.children).forEach((d, i) => {
+      d.className = 'cat-dot' + (i === currentPageIdx ? ' active' : '');
+    });
+  }
+
+  // 拖动/滑动切换页面
+  let dragStartX = 0;
+  let dragDelta = 0;
+  let isDragging = false;
+  catCarousel.addEventListener('touchstart', (e) => {
+    isDragging = true;
+    dragStartX = e.touches[0].clientX;
+    dragDelta = 0;
+    catTrack.style.transition = 'none';
+  }, { passive: true });
+  catCarousel.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    dragDelta = e.touches[0].clientX - dragStartX;
+    const carouselWidth = catCarousel.clientWidth || 320;
+    catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth + dragDelta}px)`;
+  }, { passive: true });
+  catCarousel.addEventListener('touchend', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    catTrack.style.transition = 'transform .25s ease';
+    const carouselWidth = catCarousel.clientWidth || 320;
+    const threshold = carouselWidth * 0.18;
+    const pageCount = catTrack.children.length;
+    if (dragDelta < -threshold && currentPageIdx < pageCount - 1) {
+      currentPageIdx++;
+    } else if (dragDelta > threshold && currentPageIdx > 0) {
+      currentPageIdx--;
+    }
+    updateTrackPosition();
+  });
+  // 鼠标拖动支持（桌面端调试）
+  let mouseStartX = 0;
+  catCarousel.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    mouseStartX = e.clientX;
+    dragDelta = 0;
+    catTrack.style.transition = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    dragDelta = e.clientX - mouseStartX;
+    const carouselWidth = catCarousel.clientWidth || 320;
+    catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth + dragDelta}px)`;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    catTrack.style.transition = 'transform .25s ease';
+    const carouselWidth = catCarousel.clientWidth || 320;
+    const threshold = carouselWidth * 0.18;
+    const pageCount = catTrack.children.length;
+    if (dragDelta < -threshold && currentPageIdx < pageCount - 1) {
+      currentPageIdx++;
+    } else if (dragDelta > threshold && currentPageIdx > 0) {
+      currentPageIdx--;
+    }
+    updateTrackPosition();
+  });
+
   renderCats();
-  const catCard = el('section', { class: 'card' }, [catGrid]);
+  const catCard = el('section', { class: 'card' }, [catCarousel, catDots]);
 
   // Transfer-specific fields (from / to account selectors)
   const fromSelect = el('select', { class: 'input' });
@@ -148,8 +249,23 @@ export async function renderAddTransaction(mount, params = {}) {
     ])
   ]);
 
-  // Number keypad
-  const keypad = el('div', { class: 'keypad' });
+  // Save button
+  const saveBtn = el('button', { class: 'btn btn-block', onclick: onSave }, [el('span', { text: '保存' })]);
+
+  // ===== Popup numeric keypad (模态弹出，点击金额时显示) =====
+  // 由 mask + 底部 keypad panel 组成；点击 mask 或"完成"关闭
+  let keypadOpen = false;
+  const keypadMask = el('div', { class: 'keypad-mask', style: 'display:none;' });
+  const keypadPanel = el('div', { class: 'keypad-panel' });
+  // 顶部：当前金额预览 + 完成按钮
+  const keypadPreview = el('span', { class: 'keypad-preview', text: state.amount || '0.00' });
+  const keypadHeader = el('div', { class: 'keypad-header' }, [
+    el('button', { class: 'keypad-close', text: '取消', onclick: () => closeKeypad() }),
+    el('span', { class: 'keypad-title', text: '输入金额' }),
+    el('button', { class: 'keypad-done', text: '完成', onclick: () => closeKeypad() })
+  ]);
+  // 数字键盘
+  const keypadGrid = el('div', { class: 'keypad' });
   const keys = ['1','2','3','4','5','6','7','8','9','.','0','⌫'];
   keys.forEach(k => {
     const btn = el('button', {
@@ -157,42 +273,63 @@ export async function renderAddTransaction(mount, params = {}) {
       onclick: () => onKey(k)
     });
     if (k === '⌫') btn.classList.add('danger');
-    keypad.appendChild(btn);
+    keypadGrid.appendChild(btn);
+  });
+  keypadPanel.append(keypadHeader, keypadGrid, el('div', { class: 'keypad-preview-row' }, [keypadPreview]));
+  keypadMask.appendChild(keypadPanel);
+  // 点击遮罩关闭
+  keypadMask.addEventListener('click', (e) => {
+    if (e.target === keypadMask) closeKeypad();
   });
 
-  // Save button
-  const saveBtn = el('button', { class: 'btn btn-block', onclick: onSave }, [el('span', { text: '保存' })]);
+  function openKeypad() {
+    keypadOpen = true;
+    keypadMask.style.display = 'flex';
+    refreshKeypadPreview();
+  }
+  function closeKeypad() {
+    keypadOpen = false;
+    keypadMask.style.display = 'none';
+  }
+  function refreshKeypadPreview() {
+    keypadPreview.textContent = state.amount || '0.00';
+  }
 
   // Mount everything initially (decide which sections to show based on type)
   mount.append(topbar, amountDisplay, typeTabs);
   applyTypeVisibility();
-  mount.append(keypad, saveBtn);
+  mount.append(saveBtn);
+  // keypad 作为固定定位遮罩，挂在 mount 下方便路由切换时一起被清掉
+  mount.appendChild(keypadMask);
 
   function applyTypeVisibility() {
     // Remove optional sections if already attached
     [catCard, transferCard, fieldsCard].forEach(node => {
       if (node.parentNode) node.parentNode.removeChild(node);
     });
-    // Insert before keypad
-    const keypadIdx = Array.from(mount.children).indexOf(keypad);
+    // Insert before saveBtn
+    const saveIdx = Array.from(mount.children).indexOf(saveBtn);
     if (state.type === 'transfer') {
-      mount.insertBefore(transferCard, mount.children[keypadIdx]);
-      mount.insertBefore(fieldsCard, mount.children[keypadIdx]);
+      mount.insertBefore(transferCard, mount.children[saveIdx]);
+      mount.insertBefore(fieldsCard, mount.children[saveIdx]);
       // remove the account field from fieldsCard for transfer (uses from/to instead)
       if (accountField.parentNode) accountField.parentNode.removeChild(accountField);
     } else {
-      mount.insertBefore(catCard, mount.children[keypadIdx]);
-      mount.insertBefore(fieldsCard, mount.children[keypadIdx]);
+      mount.insertBefore(catCard, mount.children[saveIdx]);
+      mount.insertBefore(fieldsCard, mount.children[saveIdx]);
       // re-add account field to fieldsCard if not there
       if (!accountField.parentNode) {
         fieldsCard.insertBefore(accountField, fieldsCard.firstChild);
       }
+      // 切换可见性后需要重排 carousel 宽度
+      requestAnimationFrame(updateTrackPosition);
     }
   }
 
   function refreshAmount() {
     amountValue.textContent = state.amount || '0.00';
     amountValue.className = 'value ' + (state.amount ? '' : 'empty');
+    refreshKeypadPreview();
   }
   function refreshType() {
     typeBtns.expense.className = state.type === 'expense' ? 'active expense' : '';
@@ -237,6 +374,7 @@ export async function renderAddTransaction(mount, params = {}) {
   async function onSave() {
     if (!state.amount || parseFloat(state.amount) <= 0) {
       toast('请输入金额');
+      openKeypad();
       return;
     }
     const amount = parseFloat(state.amount);
@@ -332,6 +470,4 @@ export async function renderAddTransaction(mount, params = {}) {
       toast('删除失败');
     }
   }
-
-  mount.append(topbar, amountDisplay, typeTabs, el('section', { class: 'card' }, [catGrid]), fieldsCard, keypad, saveBtn);
 }

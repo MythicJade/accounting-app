@@ -2,7 +2,7 @@
 import { listTransactions, monthlySummary, getBudget } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts, getAccountsMap } from '../accounts.js';
-import { formatMoney, friendlyDate, currentMonthKey, monthKeyToLabel, todayStr } from '../format.js';
+import { formatMoney, dateWithWeekday, currentMonthKey, monthKeyToLabel, todayStr } from '../format.js';
 import { el } from '../ui.js';
 import { router } from '../router.js';
 
@@ -123,45 +123,70 @@ export async function renderHome(mount) {
     if (emptySvg) emptySvg.innerHTML = '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14h-2v-4h2v4zm0-6h-2V7h2v4z"/>';
   } else {
     const list = el('div', { class: 'transaction-list' });
+    // 按日期分组：同一天的条目上面统一显示日期头
+    // 日期头：左 = 日期 + 星期，右 = 当日收入/支出合计
+    const groups = [];
+    const groupMap = new Map();
     recent.forEach(t => {
-      let iconNode, nameText, amountText, amountClass, accountName = '';
-      if (t.type === 'transfer') {
-        const fromAcc = accMap.get(t.accountId) || { name: '?', icon: '📤', color: '#999' };
-        const toAcc = accMap.get(t.toAccountId) || { name: '?', icon: '📥', color: '#999' };
-        iconNode = el('div', { class: 'icon', style: 'background:#F3F4F6;color:#6B7280' }, [document.createTextNode('🔄')]);
-        nameText = fromAcc.name + ' → ' + toAcc.name;
-        amountText = formatMoney(t.amount);
-        amountClass = 'transfer';
-      } else {
-        const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#999' };
-        const acc = accMap.get(t.accountId);
-        iconNode = el('div', { class: 'icon', style: `background:${cat.color}22;color:${cat.color}` }, [document.createTextNode(cat.icon)]);
-        // 分类名单独显示在左侧；账户名放在金额下面（仅"全部"视图下显示）
-        nameText = cat.name;
-        accountName = (acc && _selectedAccountId === null) ? acc.name : '';
-        amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
-        amountClass = t.type;
+      if (!groupMap.has(t.date)) {
+        const g = { date: t.date, items: [], income: 0, expense: 0 };
+        groupMap.set(t.date, g);
+        groups.push(g);
       }
-      // 右侧金额列：金额 + 账户名（账户名在金额下面）
-      const amountCol = el('div', { class: 'amount-col' }, [
-        el('span', { class: 'amount ' + amountClass, text: amountText }),
-        accountName ? el('span', { class: 'account-name', text: accountName }) : null
-      ].filter(Boolean));
-      const item = el('div', { class: 'tx-item', dataset: { id: t.id } }, [
-        iconNode,
-        el('div', { class: 'meta' }, [
-          el('div', { class: 'top' }, [
-            el('span', { class: 'name', text: nameText }),
-            amountCol
-          ]),
-          el('div', { class: 'between text-xs text-3' }, [
-            el('span', { class: 'note', text: t.note || '—' }),
-            el('span', { text: friendlyDate(t.date) })
-          ])
-        ])
+      const g = groupMap.get(t.date);
+      g.items.push(t);
+      if (t.type === 'income') g.income += t.amount;
+      else if (t.type === 'expense') g.expense += t.amount;
+    });
+
+    groups.forEach(g => {
+      // 日期头
+      const headerRight = [];
+      if (g.income > 0) headerRight.push(el('span', { class: 'day-income', text: '收入 ' + formatMoney(g.income) }));
+      if (g.expense > 0) headerRight.push(el('span', { class: 'day-expense', text: '支出 ' + formatMoney(g.expense) }));
+      const dayHeader = el('div', { class: 'tx-date-header' }, [
+        el('span', { class: 'tx-date-label', text: dateWithWeekday(g.date) }),
+        el('div', { class: 'tx-date-totals' }, headerRight)
       ]);
-      item.addEventListener('click', () => { location.hash = '#/edit/' + t.id; });
-      list.appendChild(item);
+      list.appendChild(dayHeader);
+
+      // 当日条目
+      g.items.forEach(t => {
+        let iconNode, nameText, amountText, amountClass, accountName = '';
+        if (t.type === 'transfer') {
+          const fromAcc = accMap.get(t.accountId) || { name: '?', icon: '📤', color: '#999' };
+          const toAcc = accMap.get(t.toAccountId) || { name: '?', icon: '📥', color: '#999' };
+          iconNode = el('div', { class: 'icon', style: 'background:#F3F4F6;color:#6B7280' }, [document.createTextNode('🔄')]);
+          nameText = fromAcc.name + ' → ' + toAcc.name;
+          amountText = formatMoney(t.amount);
+          amountClass = 'transfer';
+        } else {
+          const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#999' };
+          const acc = accMap.get(t.accountId);
+          iconNode = el('div', { class: 'icon', style: `background:${cat.color}22;color:${cat.color}` }, [document.createTextNode(cat.icon)]);
+          nameText = cat.name;
+          accountName = (acc && _selectedAccountId === null) ? acc.name : '';
+          amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
+          amountClass = t.type;
+        }
+        // 两行布局：第一行 = 名称 + 金额；第二行 = 备注 + 账户名
+        // icon 跨两行，垂直居中
+        const item = el('div', { class: 'tx-item', dataset: { id: t.id } }, [
+          iconNode,
+          el('div', { class: 'meta' }, [
+            el('div', { class: 'top' }, [
+              el('span', { class: 'name', text: nameText }),
+              el('span', { class: 'amount ' + amountClass, text: amountText })
+            ]),
+            el('div', { class: 'bottom' }, [
+              el('span', { class: 'note', text: t.note || '' }),
+              accountName ? el('span', { class: 'account-name', text: accountName }) : null
+            ].filter(Boolean))
+          ])
+        ]);
+        item.addEventListener('click', () => { location.hash = '#/edit/' + t.id; });
+        list.appendChild(item);
+      });
     });
     recentCard.appendChild(list);
   }

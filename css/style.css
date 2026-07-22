@@ -189,7 +189,7 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 10px;
   background: var(--card);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   margin-bottom: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
@@ -197,21 +197,41 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .tx-item:active { transform: scale(.99); background: #FAFBFC; }
 .tx-item:last-child { margin-bottom: 0; }
+/* icon 跨两行，垂直居中（父级 align-items: center） */
 .tx-item .icon {
-  width: 34px; height: 34px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 17px; flex-shrink: 0;
+  font-size: 16px; flex-shrink: 0;
 }
-.tx-item .meta { flex: 1; min-width: 0; }
-.tx-item .meta .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.tx-item .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tx-item .meta .top {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.tx-item .meta .bottom {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
 .tx-item .meta .name { font-size: 13px; font-weight: 500; }
-.tx-item .meta .note { font-size: 11px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
-.tx-item .amount-col { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
+.tx-item .meta .note {
+  font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
+}
 .tx-item .amount { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tx-item .amount.income { color: var(--income); }
 .tx-item .amount.expense { color: var(--expense); }
 .tx-item .amount.transfer { color: #722ED1; }
 .tx-item .account-name { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* 日期分组头：左 = 日期+星期，右 = 当日收入/支出合计 */
+.tx-date-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 4px 6px;
+  margin-top: 4px;
+}
+.tx-date-header:first-child { margin-top: 0; }
+.tx-date-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.tx-date-totals { display: flex; gap: 10px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.tx-date-totals .day-income { color: var(--income); }
+.tx-date-totals .day-expense { color: var(--expense); }
 
 /* ===== Empty state ===== */
 .empty {
@@ -322,6 +342,89 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .cat-item.selected .cat-icon { background: var(--c-primary); color: #fff; }
 .cat-item .cat-name { font-size: 12px; color: var(--text-2); }
+
+/* ===== Category carousel (5 cols × 2 rows per page, horizontal swipe) ===== */
+.cat-carousel {
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cat-pages-track {
+  display: flex;
+  transition: transform .25s ease;
+  will-change: transform;
+}
+.cat-page {
+  flex: 0 0 100%;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-auto-rows: auto;
+  gap: 6px 4px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+.cat-page .cat-item { padding: 6px 2px; gap: 2px; }
+.cat-page .cat-item .cat-icon { width: 36px; height: 36px; font-size: 18px; }
+.cat-page .cat-item .cat-name { font-size: 11px; }
+.cat-dots {
+  display: flex; justify-content: center; gap: 6px;
+  padding: 8px 0 2px;
+}
+.cat-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--border); transition: background .15s;
+}
+.cat-dot.active { background: var(--c-primary); }
+
+/* ===== Popup keypad (modal-style, slides up from bottom) ===== */
+.keypad-mask {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: fadeIn .15s ease;
+}
+.keypad-panel {
+  width: 100%; max-width: 480px;
+  background: var(--card);
+  border-radius: 16px 16px 0 0;
+  padding: 8px 12px calc(12px + var(--safe-bottom));
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
+  animation: slideUp .2s ease;
+}
+.keypad-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.keypad-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
+.keypad-close, .keypad-done {
+  background: none; border: none; padding: 4px 8px;
+  font-size: 14px; cursor: pointer;
+}
+.keypad-close { color: var(--text-3); }
+.keypad-done { color: var(--c-primary); font-weight: 600; }
+.keypad-preview-row {
+  text-align: center; padding: 4px 0 12px;
+  font-size: 32px; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.keypad-preview { font-size: 32px; }
+/* 在弹出 keypad 中复用 .keypad 样式（已存在的 grid 样式） */
+.keypad-panel .keypad { margin-top: 0; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* ===== Amount display (tap to open keypad) ===== */
+.amount-tapable { cursor: pointer; position: relative; }
+.amount-tapable:active { opacity: .9; }
+.amount-tap-hint {
+  position: absolute; bottom: 8px; right: 16px;
+  font-size: 11px; color: rgba(255,255,255,0.5);
+  font-weight: 400;
+}
 
 /* Number keypad */
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border-radius: var(--radius); overflow: hidden; margin-top: 16px; }
