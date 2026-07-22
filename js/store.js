@@ -238,6 +238,103 @@ export async function getTotalBalance() {
   return bal;
 }
 
+// 资产负债汇总：净资产 = 总资产 - 总负债；按账户 type 分组小计
+// 净资产口径与 getTotalBalance 一致；总资产 = 余额为正的账户之和；总负债 = 余额为负的账户绝对值之和
+export async function getAssetsSummary() {
+  const balances = await getAllAccountBalances();
+  const accounts = await getAll(Stores.ACCOUNTS);
+  const accMap = new Map(accounts.map(a => [a.id, a]));
+  let totalAssets = 0;
+  let totalLiabilities = 0;
+  const byType = { asset: 0, credit: 0 };
+  for (const a of accounts) {
+    const bal = balances.get(a.id) || 0;
+    const type = a.type === 'credit' ? 'credit' : 'asset';
+    byType[type] = (byType[type] || 0) + bal;
+    if (bal >= 0) totalAssets += bal;
+    else totalLiabilities += -bal;
+  }
+  return {
+    netAssets: totalAssets - totalLiabilities,
+    totalAssets,
+    totalLiabilities,
+    byType
+  };
+}
+
+// 月度资产趋势：按月计算净资产/总资产/总负债（截至该月末）
+// 口径：以所有账户 openingBalance 为起点，按交易日期累加 income/expense（transfer 互转不影响总额）
+// 返回 [{ month, label, netAssets, totalAssets, totalLiabilities }]（全年 12 个月，未来月份为 null）
+export async function monthlyAssetTrend(year) {
+  const accounts = await getAll(Stores.ACCOUNTS);
+  const allTx = await getAll(Stores.TRANSACTIONS);
+  const yearPrefix = String(year) + '-';
+  // 起始净资产 = 所有账户 openingBalance 之和
+  let baseNet = 0;
+  for (const a of accounts) {
+    if (a.openingBalance) baseNet += Number(a.openingBalance);
+  }
+  // 该年交易按月分组，计算每月净收入（income - expense，transfer 不计入总额）
+  const monthlyNetChange = new Array(12).fill(0);
+  for (const t of allTx) {
+    if (!t.date || !t.date.startsWith(yearPrefix)) continue;
+    const m = parseInt(t.date.slice(5, 7), 10) - 1;
+    if (m < 0 || m > 11) continue;
+    if (t.type === 'income') monthlyNetChange[m] += t.amount;
+    else if (t.type === 'expense') monthlyNetChange[m] -= t.amount;
+  }
+  // 累加得到每月末净资产
+  const result = [];
+  let cumNet = baseNet;
+  const now = new Date();
+  const isCurrentYear = now.getFullYear() === year;
+  const currentMonth = now.getMonth(); // 0-11
+  for (let i = 0; i < 12; i++) {
+    cumNet += monthlyNetChange[i];
+    const monthLabel = (i + 1) + '月';
+    if (isCurrentYear && i > currentMonth) {
+      // 未来月份：无数据
+      result.push({ month: i + 1, label: monthLabel, netAssets: null, totalAssets: null, totalLiabilities: null });
+    } else {
+      // 该月末的资产/负债分布需要按账户逐个计算（信用账户余额为负算负债）
+      // 简化：用月末净资产推算，但总资产/总负债需要各账户单独算
+      result.push({ month: i + 1, label: monthLabel, netAssets: cumNet, totalAssets: null, totalLiabilities: null });
+    }
+  }
+  // 精确计算每月末各账户余额，得到总资产/总负债
+  // 按账户逐个累加该年截至每月末的交易
+  for (const a of accounts) {
+    const ob = a.openingBalance ? Number(a.openingBalance) : 0;
+    let accBal = ob;
+    // 该账户在该年的交易按月排序累加
+    const accTx = allTx
+      .filter(t => t.date && t.date.startsWith(yearPrefix) && (t.accountId === a.id || t.toAccountId === a.id))
+      .sort((x, y) => x.date < y.date ? -1 : 1);
+    let txIdx = 0;
+    for (let i = 0; i < 12; i++) {
+      const monthEnd = yearPrefix + String(i + 1).padStart(2, '0') + '-31';
+      // 累加该月所有该账户交易
+      while (txIdx < accTx.length && accTx[txIdx].date <= monthEnd) {
+        const t = accTx[txIdx];
+        if (t.accountId === a.id) {
+          if (t.type === 'income') accBal += t.amount;
+          else if (t.type === 'expense') accBal -= t.amount;
+          else if (t.type === 'transfer') accBal -= t.amount;
+        }
+        if (t.toAccountId === a.id && t.type === 'transfer') accBal += t.amount;
+        txIdx++;
+      }
+      const r = result[i];
+      if (r.netAssets === null) continue; // 未来月份跳过
+      if (r.totalAssets === null) r.totalAssets = 0;
+      if (r.totalLiabilities === null) r.totalLiabilities = 0;
+      if (accBal >= 0) r.totalAssets += accBal;
+      else r.totalLiabilities += -accBal;
+    }
+  }
+  return result;
+}
+
 // ===== Backup / Restore =====
 export async function exportAll() {
   const [transactions, budgets, categories, accounts] = await Promise.all([

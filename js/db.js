@@ -1,6 +1,6 @@
 // js/db.js — IndexedDB thin wrapper (Promise based)
 const DB_NAME = 'accounting-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 const STORE_TRANSACTIONS = 'transactions';
 const STORE_BUDGETS = 'budgets';
@@ -50,6 +50,9 @@ export function openDB() {
       if (upgradeFromVersion < 3) {
         migrateAccountsOpeningBalance(db).catch(err => console.warn('v3 migration skipped:', err));
       }
+      if (upgradeFromVersion < 4) {
+        migrateAccountsType(db).catch(err => console.warn('v4 migration skipped:', err));
+      }
       resolve(db);
     };
     req.onerror = () => reject(req.error);
@@ -69,6 +72,27 @@ function migrateAccountsOpeningBalance(db) {
       if (toUpdate.length === 0) return; // nothing to do
       for (const a of toUpdate) {
         a.openingBalance = 0;
+        store.put(a);
+      }
+    };
+    getAllReq.onerror = () => reject(getAllReq.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// v4 migration: backfill type:'asset' on existing accounts (区分资金/信用)
+function migrateAccountsType(db) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_ACCOUNTS, 'readwrite');
+    const store = tx.objectStore(STORE_ACCOUNTS);
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      const accounts = getAllReq.result || [];
+      const toUpdate = accounts.filter(a => !a.type);
+      if (toUpdate.length === 0) return;
+      for (const a of toUpdate) {
+        a.type = 'asset';
         store.put(a);
       }
     };

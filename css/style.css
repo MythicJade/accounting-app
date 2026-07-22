@@ -488,3 +488,54 @@ input, select, textarea { font: inherit; color: inherit; }
 .setting-item.danger .text { color: var(--expense); }
 .about-block { text-align: center; padding: 24px 0; color: var(--text-3); font-size: 12px; }
 .about-block .logo { font-size: 32px; margin-bottom: 8px; }
+
+/* ===== 账户管理页重构 ===== */
+.accounts-summary-area { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 12px; }
+.account-summary-card { margin-bottom: 0; padding: 14px; }
+.accounts-entry-boxes { display: flex; flex-direction: column; gap: 8px; }
+.entry-box { background: var(--card); border-radius: var(--radius-lg); padding: 10px; text-align: center; box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; flex: 1; }
+.entry-box:active { transform: scale(0.96); }
+.entry-box .entry-icon { font-size: 20px; }
+.entry-box .entry-label { font-size: 11px; color: var(--text-2); }
+
+.account-lists { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.account-type-section { padding: 14px; margin-bottom: 0; }
+.account-type-section .section-title { font-size: 14px; font-weight: 600; }
+.account-type-section .section-subtotal { font-size: 13px; font-variant-numeric: tabular-nums; }
+.account-section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.account-mini-card { background: var(--bg); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.account-mini-card:active { transform: scale(0.97); }
+.account-mini-card.credit { border: 1px solid #FFE0E0; }
+.account-mini-card .mini-icon { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+.account-mini-card .mini-name { font-size: 12px; color: var(--text-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-mini-card .mini-amount { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.account-mini-card .mini-amount.expense { color: var(--expense); }
+.account-empty { grid-column: 1 / -1; text-align: center; padding: 16px 0; color: var(--text-3); font-size: 12px; }
+
+/* ===== 类型选择 toggle ===== */
+.type-toggle { display: flex; gap: 8px; }
+.type-btn { flex: 1; padding: 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); cursor: pointer; }
+.type-btn.active { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
+
+/* ===== 账户详情页 tab 切换 ===== */
+.tab-switcher { display: flex; gap: 0; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+.tab-btn { flex: 1; padding: 8px; border-radius: 8px; border: none; background: transparent; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.tab-btn.active { background: var(--card); color: var(--c-primary); font-weight: 600; box-shadow: var(--shadow); }
+.tab-content { min-height: 200px; }
+
+/* ===== 资产趋势页 ===== */
+.year-nav { padding: 8px 0; }
+.year-nav .range-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+.year-nav .range-label { font-size: 16px; font-weight: 600; }
+.assets-trend-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.assets-trend-table th, .assets-trend-table td { padding: 8px 4px; text-align: right; border-bottom: 1px solid var(--border); }
+.assets-trend-table th { color: var(--text-3); font-weight: 500; font-size: 11px; }
+.assets-trend-table th:first-child, .assets-trend-table td:first-child { text-align: left; }
+.assets-trend-table td.income { color: var(--income); }
+.assets-trend-table td.expense { color: var(--expense); }
+.assets-trend-table tr.future td { color: var(--text-3); opacity: 0.5; }
+
+/* ===== 右滑提示 ===== */
+.swipe-hint { position: fixed; top: 50%; left: 12px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 12px; z-index: 100; animation: swipe-hint-pulse 1.5s ease-in-out infinite; transition: opacity 0.5s; }
+.swipe-hint.fade-out { opacity: 0; }
+@keyframes swipe-hint-pulse { 0%, 100% { transform: translateY(-50%) translateX(0); } 50% { transform: translateY(-50%) translateX(4px); } }

@@ -1,13 +1,12 @@
 // js/views/home.js — home view: monthly summary + recent transactions
 import { listTransactions, monthlySummary, getBudget } from '../store.js';
 import { listCategories } from '../categories.js';
-import { listAccounts, getAccountsMap } from '../accounts.js';
-import { formatMoney, dateWithWeekday, currentMonthKey, monthKeyToLabel, todayStr } from '../format.js';
+import { getAccountsMap } from '../accounts.js';
+import { formatMoney, dateWithWeekday, currentMonthKey, monthKeyToLabel } from '../format.js';
 import { el } from '../ui.js';
 import { router } from '../router.js';
 
 let _categoriesCache = null;
-let _selectedAccountId = null; // null = all accounts
 
 async function getCategoriesMap() {
   if (!_categoriesCache) {
@@ -20,9 +19,9 @@ async function getCategoriesMap() {
 
 export async function renderHome(mount) {
   const monthKey = currentMonthKey();
-  const summary = await monthlySummary(monthKey, _selectedAccountId);
+  const summary = await monthlySummary(monthKey, null);
   const budget = await getBudget(monthKey);
-  const recent = await listTransactions({ limit: 30, accountId: _selectedAccountId || undefined });
+  const recent = await listTransactions({ limit: 30 });
   const catMap = await getCategoriesMap();
   const accMap = await getAccountsMap();
 
@@ -45,28 +44,22 @@ export async function renderHome(mount) {
     ])
   ]));
 
-  // Account filter chips (horizontal scroll)
-  const accounts = await listAccounts();
-  const chipsBar = el('div', { class: 'account-chips' });
-  const allChip = el('button', { class: 'chip' + (_selectedAccountId === null ? ' active' : ''), text: '全部' });
-  allChip.addEventListener('click', () => { _selectedAccountId = null; refresh(); });
-  chipsBar.appendChild(allChip);
-  accounts.forEach(acc => {
-    const chip = el('button', { class: 'chip' + (_selectedAccountId === acc.id ? ' active' : '') }, [
-      document.createTextNode(acc.icon + ' ' + acc.name)
-    ]);
-    chip.addEventListener('click', () => { _selectedAccountId = acc.id; refresh(); });
-    chipsBar.appendChild(chip);
-  });
-  const manageChip = el('button', { class: 'chip chip-manage', onclick: () => location.hash = '#/accounts', text: '⚙️ 管理' });
-  chipsBar.appendChild(manageChip);
-  nodes.push(chipsBar);
+  // 右滑进入账户管理提示（仅首次显示）
+  if (!localStorage.getItem('swipe_hint_shown')) {
+    const hint = el('div', { class: 'swipe-hint', text: '右滑管理账户 →' });
+    nodes.push(hint);
+    setTimeout(() => {
+      localStorage.setItem('swipe_hint_shown', '1');
+      if (hint.parentNode) hint.classList.add('fade-out');
+      setTimeout(() => { if (hint.parentNode) hint.parentNode.removeChild(hint); }, 500);
+    }, 3000);
+  }
 
   // Summary card
   const summaryCard = el('section', { class: 'card summary-card' }, [
-    el('div', { class: 'summary-month', text: monthKeyToLabel(monthKey) + (_selectedAccountId ? '' : '') }),
+    el('div', { class: 'summary-month', text: monthKeyToLabel(monthKey) }),
     el('div', { class: 'summary-balance' }, [
-      el('span', { class: 'summary-label', text: _selectedAccountId ? '本月结余' : '本月结余（全部）' }),
+      el('span', { class: 'summary-label', text: '本月结余（全部）' }),
       el('div', { class: 'summary-amount', text: formatMoney(summary.balance) })
     ]),
     el('div', { class: 'summary-row' }, [
@@ -165,7 +158,8 @@ export async function renderHome(mount) {
           const acc = accMap.get(t.accountId);
           iconNode = el('div', { class: 'icon', style: `background:${cat.color}22;color:${cat.color}` }, [document.createTextNode(cat.icon)]);
           nameText = cat.name;
-          accountName = (acc && _selectedAccountId === null) ? acc.name : '';
+          // 移除账户筛选后，始终显示账户名
+          accountName = acc ? acc.name : '';
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
         }
@@ -200,10 +194,33 @@ export async function renderHome(mount) {
 
   mount.append(...nodes);
 
-  // Re-render in place when account filter changes
-  function refresh() {
-    router.dispatch();
-  }
+  // 右滑手势：从屏幕左边缘右滑进入账户管理页
+  let touchStartX = 0, touchStartY = 0, touchActive = false;
+  const onStart = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchActive = true;
+  };
+  const onEnd = (e) => {
+    if (!touchActive) return;
+    touchActive = false;
+    const touch = e.changedTouches ? e.changedTouches[0] : e;
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    // 右滑：deltaX > 80 且水平为主（避免误触发垂直滚动）
+    if (deltaX > 80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+      location.hash = '#/accounts';
+    }
+  };
+  mount.addEventListener('touchstart', onStart, { passive: true });
+  mount.addEventListener('touchend', onEnd, { passive: true });
+
+  // 返回 cleanup 函数，路由切换时移除监听
+  return () => {
+    mount.removeEventListener('touchstart', onStart);
+    mount.removeEventListener('touchend', onEnd);
+  };
 }
 
 // invalidate category cache when categories change (called from other views if needed)

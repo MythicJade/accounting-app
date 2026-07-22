@@ -26,6 +26,7 @@ export async function addAccount(acc) {
     name: acc.name,
     icon: acc.icon || '💰',
     color: acc.color || '#868E96',
+    type: acc.type === 'credit' ? 'credit' : 'asset',
     sort,
     builtin: false,
     openingBalance: acc.openingBalance == null ? 0 : Number(acc.openingBalance) || 0,

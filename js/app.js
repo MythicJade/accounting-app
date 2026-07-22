@@ -8,6 +8,8 @@ import { renderStats } from './views/stats.js';
 import { renderBudget } from './views/budget.js';
 import { renderSettings } from './views/settings.js';
 import { renderAccounts } from './views/accounts.js';
+import { renderAccountDetail } from './views/account-detail.js';
+import { renderAssetsTrend } from './views/assets-trend.js';
 import { renderCategories } from './views/categories.js';
 
 // Make toast globally accessible for convenience (used by some inline handlers)
@@ -20,6 +22,8 @@ router.register('/stats', renderStats);
 router.register('/budget', renderBudget);
 router.register('/settings', renderSettings);
 router.register('/accounts', renderAccounts);
+router.register('/accounts/:id', renderAccountDetail);
+router.register('/assets', renderAssetsTrend);
 router.register('/categories', renderCategories);
 
 async function main() {
