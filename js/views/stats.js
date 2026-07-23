@@ -241,7 +241,7 @@ export async function renderStats(mount) {
     const catById = new Map(allCats.map(c => [c.id, c]));
     let pieData = [];
     catMap.forEach((val, id) => {
-      const c = catById.get(id) || { name: '未分类', color: '#999', icon: '❓' };
+      const c = catById.get(id) || { name: '未分类', color: '#aeaeb2', icon: '❓' };
       pieData.push({ label: c.name, value: val, color: c.color, id });
     });
     pieData.sort((a, b) => b.value - a.value);
@@ -302,7 +302,7 @@ export async function renderStats(mount) {
       _state.selectedPoint = null;
     }
     drawLineChart(lineCanvas, lineData, {
-      color: _state.view === 'income' ? '#52C41A' : '#FF4D4F',
+      color: _state.view === 'income' ? '#34C759' : '#FF3B30',
       selected: _state.selectedPoint,
       onSelect: (idx) => {
         _state.selectedPoint = (_state.selectedPoint === idx) ? null : idx;

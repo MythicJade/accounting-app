@@ -139,14 +139,14 @@ export async function renderHome(mount) {
       g.items.forEach(t => {
         let iconNode, nameText, amountText, amountClass, accountName = '';
         if (t.type === 'transfer') {
-          const fromAcc = accMap.get(t.accountId) || { name: '?', icon: '📤', color: '#999' };
-          const toAcc = accMap.get(t.toAccountId) || { name: '?', icon: '📥', color: '#999' };
-          iconNode = el('div', { class: 'icon', style: 'background:#F3F4F6;color:#6B7280' }, [document.createTextNode('🔄')]);
+          const fromAcc = accMap.get(t.accountId) || { name: '?', icon: '📤', color: '#aeaeb2' };
+          const toAcc = accMap.get(t.toAccountId) || { name: '?', icon: '📥', color: '#aeaeb2' };
+          iconNode = el('div', { class: 'icon', style: 'background:var(--fill-1);color:var(--text-2)' }, [document.createTextNode('🔄')]);
           nameText = fromAcc.name + ' → ' + toAcc.name;
           amountText = formatMoney(t.amount);
           amountClass = 'transfer';
         } else {
-          const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#999' };
+          const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#aeaeb2' };
           const acc = accMap.get(t.accountId);
           iconNode = el('div', { class: 'icon', style: `background:${cat.color}22;color:${cat.color}` }, [document.createTextNode(cat.icon)]);
           nameText = cat.name;

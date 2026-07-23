@@ -4,7 +4,7 @@ import { toast, confirmDialog, showModal, el } from '../ui.js';
 import { router } from '../router.js';
 
 const ICONS = ['🍱','🍜','🚇','🚗','🛒','🏠','🎮','💊','📚','💰','💼','🎁','📈','➕','🎂','👕','💊','✈️','🎬','☕','🍷','🛍️','💡','💵','💳','💙','💚','💛','🏦','📱','💎','👛'];
-const COLORS = ['#FF6B6B','#4ECDC4','#FFA94D','#845EF7','#F783AC','#51CF66','#339AF0','#FAAD14','#52C41A','#1677FF','#07C160','#722ED1','#FA8C16','#13C2C2','#868E96','#EB2F96'];
+const COLORS = ['#007AFF','#34C759','#5856D6','#FF9500','#FF3B30','#FF2D55','#AF52DE','#5AC8FA','#FFCC00','#00C7BE'];
 
 export async function renderCategories(mount) {
   let currentType = 'expense';
@@ -50,7 +50,7 @@ export async function renderCategories(mount) {
     });
     // 末尾追加一个"+"按钮便于快速新增
     const addBtn = el('div', { class: 'cat-item', onclick: () => onAdd() }, [
-      el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#999;border:2px dashed #ccc;' }, [document.createTextNode('+')]),
+      el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text-3);border:2px dashed var(--fill-2);' }, [document.createTextNode('+')]),
       el('div', { class: 'cat-name', text: '新增' })
     ]);
     grid.appendChild(addBtn);
@@ -90,14 +90,14 @@ export async function renderCategories(mount) {
     typeRow.append(tExp, tInc);
 
     let selectedIcon = cat ? cat.icon : '💰';
-    let selectedColor = cat ? cat.color : '#868E96';
+    let selectedColor = cat ? cat.color : '#007AFF';
 
     const iconGrid = el('div', { class: 'cat-grid', style: 'margin:8px 0;max-height:160px;overflow-y:auto;' });
     function renderIcons() {
       iconGrid.innerHTML = '';
       ICONS.forEach(ic => {
         const item = el('div', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), onclick: () => { selectedIcon = ic; renderIcons(); } }, [
-          el('div', { class: 'cat-icon', style: `background:#f0f0f0;color:#333` }, [document.createTextNode(ic)]),
+          el('div', { class: 'cat-icon', style: `background:var(--fill-1);color:var(--text)` }, [document.createTextNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
         iconGrid.appendChild(item);
@@ -109,7 +109,7 @@ export async function renderCategories(mount) {
     function renderColors() {
       colorRow.innerHTML = '';
       COLORS.forEach(c => {
-        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid #333' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
+        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
         colorRow.appendChild(sw);
       });
     }

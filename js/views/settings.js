@@ -206,7 +206,7 @@ export async function renderSettings(mount) {
       ]));
       preview.detectedAccounts.forEach((acc) => {
         const cur = acc.currentOpening != null ? Number(acc.currentOpening) : 0;
-        const row = el('div', { style: 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;' });
+        const row = el('div', { style: 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);' });
         const label = el('div', { style: 'flex:1;' }, [
           el('div', { text: acc.name + (acc.exists ? '' : ' (新建)') }),
           el('div', { class: 'text-sm text-3', text: acc.exists ? '已存在账户' : '将自动创建' })
@@ -281,20 +281,20 @@ export async function renderSettings(mount) {
       <p style="margin-bottom:8px;color:var(--text-2);">支持从其他记账软件导入 Excel（.xlsx）文件。第一行需为表头，格式如下：</p>
       <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
         <thead>
-          <tr style="background:#f0f0f0;">
-            <th style="padding:6px;border:1px solid #ddd;text-align:left;">列名</th>
-            <th style="padding:6px;border:1px solid #ddd;text-align:left;">说明</th>
+          <tr style="background:var(--fill-1);">
+            <th style="padding:6px;border:1px solid var(--border);text-align:left;">列名</th>
+            <th style="padding:6px;border:1px solid var(--border);text-align:left;">说明</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td style="padding:6px;border:1px solid #ddd;">记账日期</td><td style="padding:6px;border:1px solid #ddd;">格式 YYYY-MM-DD 或 YYYY/MM/DD</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">记账时间</td><td style="padding:6px;border:1px solid #ddd;">可选，如 18:30</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">分类</td><td style="padding:6px;border:1px solid #ddd;">支出/收入必填，转账留空</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">记账类型</td><td style="padding:6px;border:1px solid #ddd;">支出 / 收入 / 转账</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">金额</td><td style="padding:6px;border:1px solid #ddd;">正数，不要正负号</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">流出账户</td><td style="padding:6px;border:1px solid #ddd;">账户名（找不到自动创建）</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">流入账户</td><td style="padding:6px;border:1px solid #ddd;">仅转账填写</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ddd;">备注</td><td style="padding:6px;border:1px solid #ddd;">可选</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">记账日期</td><td style="padding:6px;border:1px solid var(--border);">格式 YYYY-MM-DD 或 YYYY/MM/DD</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">记账时间</td><td style="padding:6px;border:1px solid var(--border);">可选，如 18:30</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">分类</td><td style="padding:6px;border:1px solid var(--border);">支出/收入必填，转账留空</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">记账类型</td><td style="padding:6px;border:1px solid var(--border);">支出 / 收入 / 转账</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">金额</td><td style="padding:6px;border:1px solid var(--border);">正数，不要正负号</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">流出账户</td><td style="padding:6px;border:1px solid var(--border);">账户名（找不到自动创建）</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">流入账户</td><td style="padding:6px;border:1px solid var(--border);">仅转账填写</td></tr>
+          <tr><td style="padding:6px;border:1px solid var(--border);">备注</td><td style="padding:6px;border:1px solid var(--border);">可选</td></tr>
         </tbody>
       </table>
       <p style="margin-bottom:6px;color:var(--text-2);"><b>说明：</b></p>
@@ -356,9 +356,9 @@ export async function renderSettings(mount) {
     body.innerHTML = `
       <p style="margin-bottom:8px;"><b>方法一：电脑同一 WiFi 共享</b></p>
       <ol style="padding-left:18px;margin-bottom:14px;color:var(--text-2);">
-        <li>电脑上启动：<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">cd accounting-app && python3 -m http.server 8080</code></li>
-        <li>查电脑 IP：终端执行 <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">ip addr | grep inet</code></li>
-        <li>手机和电脑连同一 WiFi，浏览器访问 <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">http://电脑IP:8080</code></li>
+        <li>电脑上启动：<code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">cd accounting-app && python3 -m http.server 8080</code></li>
+        <li>查电脑 IP：终端执行 <code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">ip addr | grep inet</code></li>
+        <li>手机和电脑连同一 WiFi，浏览器访问 <code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">http://电脑IP:8080</code></li>
         <li>Chrome 菜单（⋮）→「添加到主屏幕」</li>
       </ol>
       <p style="margin-bottom:8px;"><b>方法二：部署到静态托管</b></p>

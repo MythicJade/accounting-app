@@ -160,7 +160,7 @@ export async function renderAccountDetail(mount, { id }) {
           amountText = formatMoney(t.amount);
           amountClass = 'transfer';
         } else {
-          const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#999' };
+          const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#aeaeb2' };
           nameText = cat.icon + ' ' + cat.name;
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
@@ -200,14 +200,14 @@ export async function renderAccountDetail(mount, { id }) {
     const icons = ['💵', '💳', '💙', '💚', '💛', '🏦', '📱', '💰', '📈', '🏠', '👛', '💎'];
     let selectedIcon = acc.icon;
     let selectedColor = acc.color;
-    const colors = ['#52C41A', '#1677FF', '#07C160', '#722ED1', '#FA8C16', '#FF6B6B', '#13C2C2', '#868E96', '#FAAD14', '#EB2F96'];
+    const colors = ['#007AFF', '#34C759', '#5856D6', '#FF9500', '#FF3B30', '#FF2D55', '#AF52DE', '#5AC8FA', '#FFCC00', '#00C7BE'];
 
     const iconGrid = el('div', { class: 'cat-grid', style: 'margin:8px 0;' });
     function renderIcons() {
       iconGrid.innerHTML = '';
       icons.forEach(ic => {
         const item = el('div', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), onclick: () => { selectedIcon = ic; renderIcons(); } }, [
-          el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#333' }, [document.createTextNode(ic)]),
+          el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [document.createTextNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
         iconGrid.appendChild(item);
@@ -219,7 +219,7 @@ export async function renderAccountDetail(mount, { id }) {
     function renderColors() {
       colorRow.innerHTML = '';
       colors.forEach(c => {
-        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid #333' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
+        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
         colorRow.appendChild(sw);
       });
     }
@@ -238,7 +238,7 @@ export async function renderAccountDetail(mount, { id }) {
       colorRow,
       el('button', {
         class: 'btn btn-block',
-        style: 'background:var(--c-primary);color:#fff;margin-top:16px;',
+        style: 'margin-top:16px;',
         onclick: async () => {
           if (!nameInput.value.trim()) { toast('请输入账户名称'); return; }
           const openingBal = openingInput.value === '' ? 0 : (parseFloat(openingInput.value) || 0);

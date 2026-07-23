@@ -3,6 +3,24 @@
 // options: { color, selected, onSelect }
 //   - selected: index of selected point (or null)
 //   - onSelect(idx|null): called when user taps a point
+
+// 读取 CSS 变量（带 hex fallback）：Canvas 无法直接使用 var() 字符串
+function readVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+// 每次绘制重新读取，兼容动态主题
+function chartColors() {
+  return {
+    grid: readVar('--grid-line', '#f2f2f7'),
+    zero: readVar('--zero-line', '#d1d1d6'),
+    text3: readVar('--text-3', '#aeaeb2'),
+    primary: readVar('--c-primary', '#007AFF'),
+    tooltip: 'rgba(29,29,31,0.82)'
+  };
+}
+
 export function drawLineChart(canvas, data, options = {}) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -13,8 +31,10 @@ export function drawLineChart(canvas, data, options = {}) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
+  const C = chartColors();
+
   if (!data.length) {
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -36,8 +56,8 @@ export function drawLineChart(canvas, data, options = {}) {
   const zeroY = pad.top + h - ((0 - minVal) / range) * h;
 
   // Y-axis grid lines + labels
-  ctx.strokeStyle = '#F3F4F6';
-  ctx.fillStyle = '#9CA3AF';
+  ctx.strokeStyle = C.grid;
+  ctx.fillStyle = C.text3;
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -54,7 +74,7 @@ export function drawLineChart(canvas, data, options = {}) {
 
   // 零基线（存在负值时）
   if (minVal < 0 && niceMax > 0) {
-    ctx.strokeStyle = '#D1D5DB';
+    ctx.strokeStyle = C.zero;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad.left, zeroY);
@@ -63,7 +83,7 @@ export function drawLineChart(canvas, data, options = {}) {
   }
 
   // X-axis labels (subset to avoid clutter)
-  ctx.fillStyle = '#9CA3AF';
+  ctx.fillStyle = C.text3;
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -75,7 +95,7 @@ export function drawLineChart(canvas, data, options = {}) {
   });
 
   // Points
-  const lineColor = options.color || '#4ECDC4';
+  const lineColor = options.color || C.primary;
   const points = data.map((d, i) => ({
     index: i,
     x: pad.left + (w / Math.max(1, data.length - 1)) * i,
@@ -135,7 +155,7 @@ export function drawLineChart(canvas, data, options = {}) {
   const selIdx = options.selected;
   if (selIdx != null && selIdx >= 0 && selIdx < points.length) {
     const p = points[selIdx];
-    drawTooltip(ctx, p, lineColor, options.valueFormatter);
+    drawTooltip(ctx, p, lineColor, options.valueFormatter, C);
   } else {
     // Show peak label by default (no selection)
     const peakIdx = values.indexOf(Math.max(...values));
@@ -148,7 +168,7 @@ export function drawLineChart(canvas, data, options = {}) {
       ctx.textBaseline = 'middle';
       const tw = ctx.measureText(label).width;
       // background
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillStyle = 'rgba(29,29,31,0.7)';
       const boxW = tw + 10;
       const boxH = 16;
       const boxX = clamp(p.x - boxW / 2, 1, cssW - boxW - 1);
@@ -207,9 +227,11 @@ export function drawMultiLineChart(canvas, series, options = {}) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
+  const C = chartColors();
+
   const validSeries = series.filter(s => s.data && s.data.length);
   if (!validSeries.length) {
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -232,8 +254,8 @@ export function drawMultiLineChart(canvas, series, options = {}) {
   const zeroY = pad.top + h - ((0 - minVal) / range) * h;
 
   // Y 轴网格 + 标签
-  ctx.strokeStyle = '#F3F4F6';
-  ctx.fillStyle = '#9CA3AF';
+  ctx.strokeStyle = C.grid;
+  ctx.fillStyle = C.text3;
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -250,7 +272,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
 
   // 零基线（存在负值时）
   if (minVal < 0 && niceMax > 0) {
-    ctx.strokeStyle = '#D1D5DB';
+    ctx.strokeStyle = C.zero;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad.left, zeroY);
@@ -260,7 +282,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
 
   // X 轴标签（用第一个系列的 labels）
   const firstData = validSeries[0].data;
-  ctx.fillStyle = '#9CA3AF';
+  ctx.fillStyle = C.text3;
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -274,7 +296,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
   // 为每个系列绘制折线和点
   const allPoints = []; // [seriesIdx][pointIdx] = {x, y, value, label, fullLabel}
   validSeries.forEach((s, sIdx) => {
-    const color = s.color || '#4ECDC4';
+    const color = s.color || C.primary;
     const points = s.data.map((d, i) => ({
       index: i,
       seriesIndex: sIdx,
@@ -326,7 +348,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
     const pts = allPoints[seriesIdx];
     if (pts && pts[pointIdx]) {
       const p = pts[pointIdx];
-      drawMultiTooltip(ctx, p, allPoints, pointIdx);
+      drawMultiTooltip(ctx, p, allPoints, pointIdx, C);
     }
   } else {
     // 默认显示最后一个有数据的月份的数值
@@ -336,7 +358,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
       if (hasData) {
         const p = allPoints[0][i];
         if (p && p.value != null) {
-          drawMultiTooltip(ctx, p, allPoints, i);
+          drawMultiTooltip(ctx, p, allPoints, i, C);
         }
         break;
       }
@@ -378,7 +400,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
   return allPoints;
 }
 
-function drawMultiTooltip(ctx, p, allPoints, pointIdx) {
+function drawMultiTooltip(ctx, p, allPoints, pointIdx, C) {
   // 显示该 X 位置所有系列的数值
   const lines = [];
   allPoints.forEach(pts => {
@@ -403,13 +425,13 @@ function drawMultiTooltip(ctx, p, allPoints, pointIdx) {
   boxX = clamp(boxX, 2, cssW - boxW - 2);
   if (boxY < 2) boxY = p.y + 10;
 
-  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillStyle = C.tooltip;
   roundRect(ctx, boxX, boxY, boxW, boxH, 6);
   ctx.fill();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#9CA3AF';
+  ctx.fillStyle = C.text3;
   ctx.font = '10px sans-serif';
   ctx.fillText(labelText, boxX + boxW / 2, boxY + 11);
 
@@ -429,7 +451,7 @@ function drawMultiTooltip(ctx, p, allPoints, pointIdx) {
   });
 }
 
-function drawTooltip(ctx, p, color, valueFormatter) {
+function drawTooltip(ctx, p, color, valueFormatter, C) {
   const fmt = valueFormatter || ((v) => formatShort(v));
   const valueText = fmt(p.value);
   const labelText = p.fullLabel || p.label;
@@ -450,7 +472,7 @@ function drawTooltip(ctx, p, color, valueFormatter) {
   if (boxY < 2) boxY = p.y + 10;
 
   // background
-  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillStyle = C.tooltip;
   roundRect(ctx, boxX, boxY, boxW, boxH, 6);
   ctx.fill();
 
@@ -462,7 +484,7 @@ function drawTooltip(ctx, p, color, valueFormatter) {
   // text
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#9CA3AF';
+  ctx.fillStyle = C.text3;
   ctx.font = '10px sans-serif';
   ctx.fillText(labelText, boxX + boxW / 2, boxY + 11);
   ctx.fillStyle = '#fff';
@@ -470,7 +492,7 @@ function drawTooltip(ctx, p, color, valueFormatter) {
   ctx.fillText(valueLine, boxX + boxW / 2, boxY + 25);
 
   // pointer line from box to point
-  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.strokeStyle = 'rgba(29,29,31,0.4)';
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 2]);
   ctx.beginPath();

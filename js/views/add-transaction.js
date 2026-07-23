@@ -78,7 +78,7 @@ export async function renderAddTransaction(mount, params = {}) {
     if (cats.length === 0) {
       const empty = el('div', { class: 'empty', style: 'padding:16px 8px;' }, [
         el('p', { text: '暂无' + (state.type === 'income' ? '收入' : '支出') + '分类' }),
-        el('button', { class: 'btn', style: 'margin-top:8px;background:var(--c-primary);color:#fff;', onclick: () => location.hash = '#/categories' }, [el('span', { text: '去创建分类' })])
+        el('button', { class: 'btn', style: 'margin-top:8px;', onclick: () => location.hash = '#/categories' }, [el('span', { text: '去创建分类' })])
       ]);
       catTrack.appendChild(empty);
       return;
@@ -92,7 +92,7 @@ export async function renderAddTransaction(mount, params = {}) {
         let item;
         if (c._isAdd) {
           item = el('div', { class: 'cat-item', onclick: () => location.hash = '#/categories' }, [
-            el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#999;border:2px dashed #ccc;' }, [document.createTextNode('+')]),
+            el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text-3);border:2px dashed var(--fill-2);' }, [document.createTextNode('+')]),
             el('div', { class: 'cat-name', text: '管理' })
           ]);
         } else {
@@ -222,7 +222,7 @@ export async function renderAddTransaction(mount, params = {}) {
   const accountCell = el('div', { class: 'add-field' }, [
     el('label', { text: '账户' }),
     allAccounts.length === 0
-      ? el('button', { class: 'btn', style: 'background:var(--c-primary);color:#fff;padding:6px 8px;font-size:12px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
+      ? el('button', { class: 'btn', style: 'padding:6px 8px;font-size:12px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
       : accountSelect
   ]);
 

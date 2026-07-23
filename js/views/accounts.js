@@ -66,7 +66,7 @@ export async function renderAccounts(mount) {
   // 转账按钮
   const transferBtn = el('button', {
     class: 'btn btn-block',
-    style: 'background:var(--c-primary);color:#fff;margin-top:8px;',
+    style: 'margin-top:8px;',
     onclick: onTransfer
   }, [el('span', { text: '🔄 账户间转账' })]);
 
@@ -122,15 +122,15 @@ export async function renderAccounts(mount) {
       ? ['💳', '💙', '🏦', '📱', '📈', '💰', '🏠', '👛', '💎', '💵', '💚', '💛']
       : ['💵', '💳', '💙', '💚', '💛', '🏦', '📱', '💰', '📈', '🏠', '👛', '💎'];
     let selectedIcon = acc ? acc.icon : (selectedType === 'credit' ? '💳' : '💰');
-    const colors = ['#52C41A', '#1677FF', '#07C160', '#722ED1', '#FA8C16', '#FF6B6B', '#13C2C2', '#868E96', '#FAAD14', '#EB2F96'];
-    let selectedColor = acc ? acc.color : '#868E96';
+    const colors = ['#007AFF', '#34C759', '#5856D6', '#FF9500', '#FF3B30', '#FF2D55', '#AF52DE', '#5AC8FA', '#FFCC00', '#00C7BE'];
+    let selectedColor = acc ? acc.color : '#007AFF';
 
     const iconGrid = el('div', { class: 'cat-grid', style: 'margin:8px 0;' });
     function renderIcons() {
       iconGrid.innerHTML = '';
       icons.forEach(ic => {
         const item = el('div', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), onclick: () => { selectedIcon = ic; renderIcons(); } }, [
-          el('div', { class: 'cat-icon', style: 'background:#f0f0f0;color:#333' }, [document.createTextNode(ic)]),
+          el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [document.createTextNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
         iconGrid.appendChild(item);
@@ -142,7 +142,7 @@ export async function renderAccounts(mount) {
     function renderColors() {
       colorRow.innerHTML = '';
       colors.forEach(c => {
-        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid #333' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
+        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
         colorRow.appendChild(sw);
       });
     }

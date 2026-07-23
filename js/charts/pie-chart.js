@@ -4,6 +4,25 @@
 //   - selected: index of currently selected slice (or null)
 //   - centerLabel / centerValue: override center text (optional)
 //   - topLabels: number of top slices to label with leader lines (default 3)
+
+// 读取 CSS 变量（带 hex fallback）：Canvas 无法直接使用 var() 字符串
+function readVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+// 每次绘制重新读取，兼容动态主题
+function pieColors() {
+  return {
+    border: readVar('--border', '#e5e5ea'),
+    text: readVar('--text', '#1d1d1f'),
+    text2: readVar('--text-2', '#6e6e73'),
+    text3: readVar('--text-3', '#aeaeb2'),
+    primary: readVar('--c-primary', '#007AFF'),
+    leader: readVar('--leader-line', '#c7c7cc')
+  };
+}
+
 export function drawPieChart(canvas, data, options = {}) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -14,6 +33,7 @@ export function drawPieChart(canvas, data, options = {}) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
+  const C = pieColors();
   const total = data.reduce((s, d) => s + d.value, 0);
   const cx = cssW / 2;
   const cy = cssH / 2;
@@ -30,9 +50,9 @@ export function drawPieChart(canvas, data, options = {}) {
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2, true);
-    ctx.fillStyle = '#E5E7EB';
+    ctx.fillStyle = C.border;
     ctx.fill();
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -52,7 +72,7 @@ export function drawPieChart(canvas, data, options = {}) {
       midAngle: (startAngle + endAngle) / 2,
       value: d.value,
       label: d.label,
-      color: d.color || '#4ECDC4',
+      color: d.color || C.primary,
       pct: d.value / total
     });
     startAngle = endAngle;
@@ -81,7 +101,7 @@ export function drawPieChart(canvas, data, options = {}) {
   const topN = options.topLabels != null ? options.topLabels : 3;
   const topSlices = [...slices].sort((a, b) => b.value - a.value).slice(0, topN);
   topSlices.forEach(s => {
-    drawLeaderLabel(ctx, cx, cy, radius, s, options.selected === s.index);
+    drawLeaderLabel(ctx, cx, cy, radius, s, options.selected === s.index, C);
   });
 
   // Center content
@@ -103,19 +123,19 @@ export function drawPieChart(canvas, data, options = {}) {
     }
     ctx.fillText(lbl, cx, cy - 16);
 
-    ctx.fillStyle = '#1F2937';
+    ctx.fillStyle = C.text;
     ctx.font = 'bold 17px sans-serif';
     ctx.fillText(formatMoneyShort(sel.value), cx, cy + 2);
 
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '11px sans-serif';
     ctx.fillText(Math.round(sel.pct * 100) + '%', cx, cy + 20);
   } else {
     // Default: total
-    ctx.fillStyle = '#1F2937';
+    ctx.fillStyle = C.text;
     ctx.font = 'bold 18px sans-serif';
     ctx.fillText(formatMoneyShort(total), cx, cy - 6);
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '11px sans-serif';
     ctx.fillText('总计', cx, cy + 14);
   }
@@ -153,7 +173,7 @@ export function drawPieChart(canvas, data, options = {}) {
   return slices;
 }
 
-function drawLeaderLabel(ctx, cx, cy, radius, slice, isSelected) {
+function drawLeaderLabel(ctx, cx, cy, radius, slice, isSelected, C) {
   const mid = slice.midAngle;
   const r1 = radius + 2;
   const r2 = radius + 10;
@@ -165,7 +185,7 @@ function drawLeaderLabel(ctx, cx, cy, radius, slice, isSelected) {
   const isRight = x2 >= cx;
   const x3 = isRight ? x2 + 8 : x2 - 8;
 
-  ctx.strokeStyle = isSelected ? slice.color : '#B0B7C3';
+  ctx.strokeStyle = isSelected ? slice.color : C.leader;
   ctx.lineWidth = isSelected ? 1.5 : 1;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -187,17 +207,17 @@ function drawLeaderLabel(ctx, cx, cy, radius, slice, isSelected) {
   ctx.textBaseline = 'middle';
   if (isRight) {
     ctx.textAlign = 'left';
-    ctx.fillStyle = isSelected ? slice.color : '#374151';
+    ctx.fillStyle = isSelected ? slice.color : C.text2;
     ctx.fillText(labelText, x3 + 2, y2 - 6);
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '10px sans-serif';
     ctx.fillText(moneyText, x3 + 2, y2 + 6);
   } else {
     ctx.textAlign = 'right';
-    ctx.fillStyle = isSelected ? slice.color : '#374151';
+    ctx.fillStyle = isSelected ? slice.color : C.text2;
     ctx.font = isSelected ? 'bold ' + fontSize + 'px sans-serif' : fontSize + 'px sans-serif';
     ctx.fillText(labelText, x3 - 2, y2 - 6);
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = C.text3;
     ctx.font = '10px sans-serif';
     ctx.fillText(moneyText, x3 - 2, y2 + 6);
   }

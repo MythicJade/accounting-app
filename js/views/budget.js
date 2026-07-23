@@ -39,12 +39,12 @@ export async function renderBudget(mount) {
       el('button', { class: 'btn mt-8', onclick: () => editBudget(monthKey, 0) }, [el('span', { text: '设置预算' })])
     ]);
   } else if (overBudget) {
-    warningCard = el('section', { class: 'card center', style: 'background:#FFF1F0;border:1px solid #FFCCC7;' }, [
+    warningCard = el('section', { class: 'card center', style: 'background:var(--c-error-surface);border:1px solid var(--c-error-surface);' }, [
       el('p', { style: 'color:var(--expense);font-weight:500;', text: '⚠️ 已超出预算 ' + formatMoney(Math.abs(remaining)) })
     ]);
   } else if (pct >= 80) {
-    warningCard = el('section', { class: 'card center', style: 'background:#FFF7E6;border:1px solid #FFD591;' }, [
-      el('p', { style: 'color:#FA8C16;font-weight:500;', text: '⚠️ 已使用 ' + pct + '%，注意控制开支' })
+    warningCard = el('section', { class: 'card center', style: 'background:var(--c-warning-surface);border:1px solid var(--c-warning-surface);' }, [
+      el('p', { style: 'color:var(--warning);font-weight:500;', text: '⚠️ 已使用 ' + pct + '%，注意控制开支' })
     ]);
   }
 
@@ -74,7 +74,7 @@ export async function renderBudget(mount) {
     const used = sum.expense;
     const isCurrent = mk === monthKey;
     const pctH = lim > 0 ? Math.min(100, used / lim * 100) : (maxVal > 0 ? Math.min(100, used / maxVal * 100) : 0);
-    const barColor = lim > 0 && used > lim ? '#FF4D4F' : (lim > 0 && used / lim > 0.8 ? '#FAAD14' : '#4ECDC4');
+    const barColor = lim > 0 && used > lim ? 'var(--expense)' : (lim > 0 && used / lim > 0.8 ? 'var(--warning)' : 'var(--c-primary)');
     const item = el('div', { class: 'history-item' }, [
       el('div', { class: 'month', text: (isCurrent ? '▸ ' : '') + monthKeyToLabel(mk).slice(5) }),
       el('div', { class: 'bar' }, [ el('i', { style: `width:${pctH}%;background:${barColor}` }) ]),

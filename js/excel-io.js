@@ -89,7 +89,7 @@ function ensureXLSX() {
 const DEFAULT_CAT_ICON = { expense: '💰', income: '💼' };
 
 // 颜色调色板（与分类管理页保持一致）
-const COLOR_PALETTE = ['#FF6B6B','#4ECDC4','#FFA94D','#845EF7','#F783AC','#51CF66','#339AF0','#FAAD14','#52C41A','#1677FF','#07C160','#722ED1','#FA8C16','#13C2C2','#868E96','#EB2F96'];
+const COLOR_PALETTE = ['#007AFF','#34C759','#5856D6','#FF9500','#FF3B30','#FF2D55','#AF52DE','#5AC8FA','#FFCC00','#00C7BE'];
 const ACCOUNT_ICON_PALETTE = ['💵','💳','💙','💚','💛','🏦','📱','💰','📈','🏠','👛','💎'];
 
 // 从调色板中随机挑一个颜色，尽量避开已用过的颜色以保证视觉区分度

@@ -1,20 +1,62 @@
 /* ===== Reset & Variables ===== */
 :root {
-  --c-primary: #4ECDC4;
-  --c-primary-dark: #3DB5AC;
-  --c-primary-light: #E8F8F6;
-  --bg: #F7F9FA;
-  --card: #FFFFFF;
-  --income: #52C41A;
-  --expense: #FF4D4F;
-  --text: #1F2937;
-  --text-2: #6B7280;
-  --text-3: #9CA3AF;
-  --border: #E5E7EB;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.10);
+  /* ===== Apple 配色：主色系统蓝 / 收入绿 / 支出红 / 转账紫 / 警示橙 ===== */
+  --c-primary: #007AFF;
+  --c-primary-dark: #0064d6;
+  --c-primary-light: #e8f2ff;
+  --bg: #f2f2f7;
+  --card: #ffffff;
+  --income: #34C759;
+  --expense: #FF3B30;
+  --transfer: #5856d6;
+  --warning: #ff9500;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #aeaeb2;
+  --border: #e5e5ea;
+
+  /* 表面色（浅底提示卡） */
+  --c-error-surface: #ffecea;
+  --c-success-surface: #e9f9ee;
+  --c-warning-surface: #fff4e5;
+  --c-transfer-surface: #eee9ff;
+
+  /* 占位 / 填充色 */
+  --fill-1: #f2f2f7;
+  --fill-2: #e5e5ea;
+
+  /* 渐变（渐变卡统一主色蓝） */
+  --gradient-primary: linear-gradient(135deg, #007AFF 0%, #0064d6 100%);
+
+  /* 图表语义色 */
+  --chart-income: var(--income);
+  --chart-expense: var(--expense);
+  --chart-asset: var(--c-primary);
+
+  /* 图表网格 / 辅助线 */
+  --grid-line: #f2f2f7;
+  --zero-line: #d1d1d6;
+  --leader-line: #c7c7cc;
+
+  /* 间距阶梯 */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+
+  /* 圆角阶梯（保留原名 --radius / --radius-lg 重定义） */
+  --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* 阴影阶梯（保留原名 --shadow / --shadow-lg 重定义） */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.05);
+  --shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 16px 40px -10px rgba(0, 0, 0, 0.10), 0 8px 16px -8px rgba(0, 0, 0, 0.06);
+
   --tabbar-h: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
@@ -117,7 +159,7 @@ input, select, textarea { font: inherit; color: inherit; }
   width: 52px; height: 52px; border-radius: 50%;
   background: var(--c-primary); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
   z-index: 40; cursor: pointer;
   transition: transform .12s;
 }
@@ -195,7 +237,7 @@ input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer;
   transition: transform .1s;
 }
-.tx-item:active { transform: scale(.99); background: #FAFBFC; }
+.tx-item:active { transform: scale(.99); background: var(--bg); }
 .tx-item:last-child { margin-bottom: 0; }
 /* 左侧：图标 + 分类名，整体垂直居中 */
 .tx-item .tx-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
@@ -211,7 +253,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .tx-item .amount { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tx-item .amount.income { color: var(--income); }
 .tx-item .amount.expense { color: var(--expense); }
-.tx-item .amount.transfer { color: #722ED1; }
+.tx-item .amount.transfer { color: var(--transfer); }
 .tx-item .account-name { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
 /* 日期分组头：左 = 日期+星期，右 = 当日收入/支出合计 */
@@ -230,7 +272,6 @@ input, select, textarea { font: inherit; color: inherit; }
 .empty {
   text-align: center; padding: 48px 20px; color: var(--text-3);
 }
-.empty svg { margin: 0 auto 12px; opacity: .4; }
 .empty p { font-size: 14px; }
 
 /* ===== Utility ===== */
@@ -254,12 +295,12 @@ input, select, textarea { font: inherit; color: inherit; }
 /* progress bar */
 .progress { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .progress > i { display: block; height: 100%; background: var(--c-primary); border-radius: 4px; transition: width .4s ease; }
-.progress.warn > i { background: #FAAD14; }
+.progress.warn > i { background: var(--warning); }
 .progress.danger > i { background: var(--expense); }
 
 /* ===== Home: Summary card ===== */
 .summary-card {
-  background: linear-gradient(135deg, #4ECDC4 0%, #3DB5AC 100%);
+  background: var(--gradient-primary);
   color: #fff;
 }
 .summary-card .summary-month { font-size: 13px; opacity: .9; margin-bottom: 4px; }
@@ -269,14 +310,14 @@ input, select, textarea { font: inherit; color: inherit; }
 .summary-card .summary-item { flex: 1; }
 .summary-card .summary-sub-label { font-size: 12px; opacity: .85; }
 .summary-card .summary-sub-amount { font-size: 16px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.summary-card .summary-sub-amount.income { color: #D7F9D7; }
-.summary-card .summary-sub-amount.expense { color: #FFE0E0; }
+.summary-card .summary-sub-amount.income { color: rgba(255,255,255,0.95); }
+.summary-card .summary-sub-amount.expense { color: rgba(255,255,255,0.95); }
 
 .budget-mini { padding: 14px 16px; }
 
 /* ===== Add transaction form ===== */
 .amount-display {
-  background: linear-gradient(135deg, #4ECDC4 0%, #3DB5AC 100%);
+  background: var(--gradient-primary);
   color: #fff;
   border-radius: var(--radius-lg);
   padding: 24px 20px;
@@ -292,7 +333,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .type-tabs button.active { background: var(--card); color: var(--text); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 .type-tabs button.active.expense { color: var(--expense); }
 .type-tabs button.active.income { color: var(--income); }
-.type-tabs button.active.transfer { color: #722ED1; }
+.type-tabs button.active.transfer { color: var(--transfer); }
 
 /* 3-tab variant: 支出/收入/转账 */
 .type-tabs-3 button { font-size: 13px; padding: 7px 4px; }
@@ -317,7 +358,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .account-chips .chip.chip-manage { color: var(--text-3); font-size: 12px; }
 
 /* Account list item amount colors */
-.amount.transfer { color: #722ED1; font-weight: 500; }
+.amount.transfer { color: var(--transfer); font-weight: 500; }
 .account-item { cursor: pointer; }
 .account-item:active { background: var(--bg); }
 
@@ -518,7 +559,7 @@ body.route-add .view {
 
 /* ===== Budget view ===== */
 .budget-hero {
-  background: linear-gradient(135deg, #4ECDC4 0%, #3DB5AC 100%);
+  background: var(--gradient-primary);
   color: #fff; border-radius: var(--radius-lg); padding: 24px 20px; margin-bottom: 16px;
 }
 .budget-hero .label { font-size: 13px; opacity: .9; }
@@ -526,7 +567,7 @@ body.route-add .view {
 .budget-hero .meta { display: flex; justify-content: space-between; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 13px; }
 .budget-progress { height: 12px; background: rgba(255,255,255,0.25); border-radius: 6px; overflow: hidden; margin-top: 12px; }
 .budget-progress > i { display: block; height: 100%; background: #fff; border-radius: 6px; transition: width .4s ease; }
-.budget-progress.danger > i { background: #FFD666; }
+.budget-progress.danger > i { background: var(--warning); }
 
 .history-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .history-item:last-child { border-bottom: none; }
@@ -566,7 +607,7 @@ body.route-add .view {
 .account-section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .account-mini-card { background: var(--bg); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
 .account-mini-card:active { transform: scale(0.97); }
-.account-mini-card.credit { border: 1px solid #FFE0E0; }
+.account-mini-card.credit { border: 1px solid var(--c-error-surface); }
 .account-mini-card .mini-icon { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
 .account-mini-card .mini-name { font-size: 12px; color: var(--text-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-mini-card .mini-amount { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }

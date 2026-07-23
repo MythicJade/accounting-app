@@ -64,9 +64,9 @@ export async function renderAssetsTrend(mount) {
       el('div', { class: 'card-title' }, [
         el('span', { text: '月度趋势' }),
         el('span', { class: 'text-sm text-3', style: 'display:flex;gap:12px;' }, [
-          el('span', { text: '● 净资产', style: 'color:#52C41A;' }),
-          el('span', { text: '● 总资产', style: 'color:#1677FF;' }),
-          el('span', { text: '● 总负债', style: 'color:#FF4D4F;' })
+          el('span', { text: '● 净资产', style: 'color:#34C759;' }),
+          el('span', { text: '● 总资产', style: 'color:#007AFF;' }),
+          el('span', { text: '● 总负债', style: 'color:#FF3B30;' })
         ])
       ])
     ]);
@@ -79,17 +79,17 @@ export async function renderAssetsTrend(mount) {
     const series = [
       {
         label: '净资产',
-        color: '#52C41A',
+        color: '#34C759',
         data: validData.map(d => ({ label: d.label, value: d.netAssets, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总资产',
-        color: '#1677FF',
+        color: '#007AFF',
         data: validData.map(d => ({ label: d.label, value: d.totalAssets || 0, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总负债',
-        color: '#FF4D4F',
+        color: '#FF3B30',
         data: validData.map(d => ({ label: d.label, value: d.totalLiabilities || 0, fullLabel: year + '年' + d.label }))
       }
     ];

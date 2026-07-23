@@ -25,7 +25,7 @@ export async function addAccount(acc) {
     id: acc.id || ('acc_' + Date.now()),
     name: acc.name,
     icon: acc.icon || '💰',
-    color: acc.color || '#868E96',
+    color: acc.color || '#007AFF',
     type: acc.type === 'credit' ? 'credit' : 'asset',
     sort,
     builtin: false,

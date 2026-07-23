@@ -28,7 +28,7 @@ export async function addCategory(cat) {
     name: cat.name,
     type: cat.type || 'expense',
     icon: cat.icon || '💰',
-    color: cat.color || '#868E96',
+    color: cat.color || '#007AFF',
     sort,
     builtin: false,
     createdAt: Date.now(),
