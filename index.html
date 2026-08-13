@@ -1,47 +1,1282 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#007AFF">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="记账">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="icon" type="image/png" href="icons/icon-192.png">
-  <title>我的记账</title>
-  <link rel="stylesheet" href="css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#00b894">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="description" content="AA账单 - 轻松算清每一笔">
+    <title>AA账单 · 轻松算钱</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        :root {
+            --primary: #00b894;
+            --primary-dark: #00a381;
+            --primary-bg: rgba(0, 184, 148, 0.1);
+            --danger: #d63031;
+            --danger-bg: rgba(214, 48, 49, 0.08);
+            --warning: #fdcb6e;
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --text: #2d3436;
+            --text-secondary: #636e72;
+            --text-light: #b2bec3;
+            --border: #dfe6e9;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 15px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #app {
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: var(--bg);
+            position: relative;
+            padding-bottom: 80px;
+        }
+
+        /* Header */
+        .app-header {
+            background: linear-gradient(135deg, #00b894, #00cec9);
+            color: white;
+            padding: 24px 16px 20px;
+            padding-top: calc(24px + env(safe-area-inset-top));
+            text-align: center;
+        }
+
+        .app-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .app-header .subtitle {
+            font-size: 13px;
+            opacity: 0.85;
+            margin-top: 4px;
+        }
+
+        /* Content */
+        .app-content {
+            padding: 16px;
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Section headers */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 12px;
+            padding: 0 4px;
+        }
+
+        .section-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .section-hint {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .results-section-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 20px 4px 10px;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 10px;
+        }
+
+        /* Buttons */
+        .btn {
+            height: 48px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-family: inherit;
+        }
+
+        .btn-block {
+            width: 100%;
+            margin-top: 12px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .btn-outline {
+            background: var(--card);
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-outline:disabled {
+            opacity: 0.4;
+            border-color: var(--text-light);
+            color: var(--text-light);
+            cursor: not-allowed;
+        }
+
+        .btn-danger-outline {
+            background: transparent;
+            border: 2px solid var(--danger);
+            color: var(--danger);
+        }
+
+        .icon-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 50%;
+            background: var(--bg);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.15s;
+            font-family: inherit;
+        }
+
+        .icon-btn.danger {
+            color: var(--danger);
+            background: var(--danger-bg);
+        }
+
+        .icon-btn:active {
+            opacity: 0.6;
+        }
+
+        /* Person cards */
+        .person-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .person-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary-bg);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+
+        .person-name-input {
+            flex: 1;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 9px 12px;
+            font-size: 16px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: inherit;
+            min-width: 0;
+        }
+
+        .person-name-input:focus {
+            border-color: var(--primary);
+            outline: none;
+            background: white;
+        }
+
+        .local-toggle {
+            width: 36px;
+            height: 36px;
+            border: 2px solid var(--border);
+            border-radius: 50%;
+            background: var(--bg);
+            font-size: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+            opacity: 0.35;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+        }
+
+        .local-toggle.active {
+            border-color: var(--primary);
+            background: var(--primary-bg);
+            opacity: 1;
+        }
+
+        /* Info note */
+        .info-note {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-top: 16px;
+            padding: 10px;
+            background: var(--primary-bg);
+            border-radius: var(--radius-sm);
+            line-height: 1.6;
+        }
+
+        /* Expense cards */
+        .expense-card {
+            padding: 16px;
+        }
+
+        .expense-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .expense-num {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        .expense-amount-row {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .currency {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .amount-input {
+            font-size: 28px;
+            font-weight: 700;
+            border: none;
+            padding: 0;
+            flex: 1;
+            background: transparent;
+            color: var(--text);
+            font-family: inherit;
+            min-width: 0;
+        }
+
+        .amount-input:focus {
+            outline: none;
+        }
+
+        .amount-input::placeholder {
+            color: var(--text-light);
+            font-weight: 400;
+        }
+
+        .expense-field {
+            margin-bottom: 12px;
+        }
+
+        .expense-field label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .payer-select {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-size: 15px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: inherit;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23636e72' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+
+        .payer-select:focus {
+            border-color: var(--primary);
+            outline: none;
+            background-color: white;
+        }
+
+        .splitter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip {
+            padding: 7px 14px;
+            border: 2px solid var(--border);
+            border-radius: 20px;
+            background: var(--card);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: inherit;
+            font-weight: 500;
+        }
+
+        .chip.active {
+            border-color: var(--primary);
+            background: var(--primary-bg);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .chip:active {
+            transform: scale(0.95);
+        }
+
+        .note-input {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 9px 12px;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: inherit;
+            margin-top: 4px;
+        }
+
+        .note-input:focus {
+            border-color: var(--primary);
+            outline: none;
+            background: white;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-light);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .empty-state p {
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+
+        .empty-hint {
+            font-size: 13px !important;
+            color: var(--text-light);
+        }
+
+        /* Results: Summary */
+        .summary-card {
+            display: flex;
+            align-items: center;
+            padding: 18px 16px;
+        }
+
+        .summary-item {
+            flex: 1;
+            text-align: center;
+        }
+
+        .summary-label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .summary-value {
+            display: block;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .summary-divider {
+            width: 1px;
+            height: 32px;
+            background: var(--border);
+        }
+
+        /* Balance rows */
+        .balance-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .balance-name {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .balance-amount {
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .balance-amount.positive {
+            color: var(--primary);
+        }
+
+        .balance-amount.negative {
+            color: var(--danger);
+        }
+
+        .balance-amount.neutral {
+            color: var(--text-light);
+        }
+
+        /* Transfer cards */
+        .transfer-card {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+        }
+
+        .transfer-person {
+            flex: 1;
+            font-weight: 600;
+            font-size: 15px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .transfer-from {
+            text-align: left;
+            color: var(--danger);
+        }
+
+        .transfer-to {
+            text-align: right;
+            color: var(--primary);
+        }
+
+        .transfer-arrow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            padding: 0 10px;
+            flex-shrink: 0;
+        }
+
+        .transfer-amount {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--text);
+        }
+
+        .arrow {
+            font-size: 16px;
+            color: var(--text-light);
+        }
+
+        /* Tab bar */
+        .tab-bar {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid var(--border);
+            padding: 6px 0;
+            padding-bottom: calc(6px + env(safe-area-inset-bottom));
+            z-index: 100;
+        }
+
+        .tab-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            padding: 8px;
+            border: none;
+            background: none;
+            color: var(--text-light);
+            font-size: 11px;
+            cursor: pointer;
+            transition: color 0.2s;
+            font-family: inherit;
+        }
+
+        .tab-item.active {
+            color: var(--primary);
+        }
+
+        .tab-icon {
+            font-size: 22px;
+            line-height: 1;
+        }
+
+        .tab-label {
+            font-weight: 500;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(45, 52, 54, 0.92);
+            color: white;
+            padding: 10px 24px;
+            border-radius: 24px;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 1000;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Responsive */
+        @media (min-width: 501px) {
+            body {
+                background: #e3e6ea;
+            }
+            #app {
+                box-shadow: 0 0 30px rgba(0, 0, 0, 0.12);
+            }
+        }
+    </style>
 </head>
 <body>
-  <div id="app">
-    <main id="view" class="view"></main>
-    <nav id="tabbar" class="tabbar">
-      <a class="tab" href="#/" data-route="/">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-        <span>首页</span>
-      </a>
-      <a class="tab" href="#/stats" data-route="/stats">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/></svg>
-        <span>统计</span>
-      </a>
-      <a class="tab" href="#/settings" data-route="/settings">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-        <span>我的</span>
-      </a>
-    </nav>
-  </div>
-  <div id="toast" class="toast" hidden></div>
-  <div id="modal-root"></div>
-  <script type="module" src="js/app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js').catch(function (e) {
-          console.warn('SW register failed:', e);
+    <div id="app">
+        <header class="app-header">
+            <h1>AA账单</h1>
+            <p class="subtitle">轻松算清每一笔</p>
+        </header>
+
+        <main class="app-content">
+            <!-- Tab: People -->
+            <section id="tab-people" class="tab-panel active">
+                <div class="section-header">
+                    <h2>参与人员</h2>
+                    <span class="section-hint">2~6人</span>
+                </div>
+                <div id="people-list"></div>
+                <button id="add-person-btn" class="btn btn-outline btn-block">➕ 添加人员</button>
+                <div class="info-note">
+                    💡 点击 🏠 标记"本地用户"。<br>金额除不尽时，本地用户多摊1分钱。
+                </div>
+            </section>
+
+            <!-- Tab: Bills -->
+            <section id="tab-bills" class="tab-panel">
+                <div class="section-header">
+                    <h2>账单记录</h2>
+                    <span id="total-display" class="section-hint">总计 ¥0.00</span>
+                </div>
+                <div id="expense-list"></div>
+                <button id="add-expense-btn" class="btn btn-primary btn-block">➕ 添加账单</button>
+            </section>
+
+            <!-- Tab: Results -->
+            <section id="tab-results" class="tab-panel">
+                <div id="results-content"></div>
+                <button id="reset-btn" class="btn btn-danger-outline btn-block" style="margin-top: 24px;">🗑️ 重置所有数据</button>
+            </section>
+        </main>
+
+        <nav class="tab-bar">
+            <button class="tab-item active" data-tab="people">
+                <span class="tab-icon">👥</span>
+                <span class="tab-label">人员</span>
+            </button>
+            <button class="tab-item" data-tab="bills">
+                <span class="tab-icon">🧾</span>
+                <span class="tab-label">账单</span>
+            </button>
+            <button class="tab-item" data-tab="results">
+                <span class="tab-icon">💰</span>
+                <span class="tab-label">结算</span>
+            </button>
+        </nav>
+    </div>
+
+    <script>
+        'use strict';
+
+        const STORAGE_KEY = 'aa-bill-splitter-v1';
+
+        // ==================== State ====================
+        let state = {
+            people: [
+                { id: 'p1', name: '', isLocal: true },
+                { id: 'p2', name: '', isLocal: false },
+            ],
+            expenses: [],
+            activeTab: 'people',
+        };
+
+        // ==================== Utils ====================
+        function genId() {
+            return 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        }
+
+        function save() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } catch (e) {}
+        }
+
+        function load() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.people && parsed.expenses) {
+                        state = parsed;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        function getPerson(id) {
+            return state.people.find(function (p) { return p.id === id; });
+        }
+
+        function getPersonName(person) {
+            if (!person) return '?';
+            if (person.name && person.name.trim()) return person.name.trim();
+            const idx = state.people.indexOf(person) + 1;
+            return '用户' + idx;
+        }
+
+        function getLocalUserId() {
+            const local = state.people.find(function (p) { return p.isLocal; });
+            return local ? local.id : (state.people[0] ? state.people[0].id : null);
+        }
+
+        function toCents(yuan) {
+            var n = parseFloat(yuan);
+            if (isNaN(n) || n < 0) return 0;
+            return Math.round(n * 100);
+        }
+
+        function formatYuan(cents) {
+            return (cents / 100).toFixed(2);
+        }
+
+        function showToast(msg) {
+            var old = document.querySelector('.toast');
+            if (old) old.remove();
+            var toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(function () { toast.classList.add('show'); }, 10);
+            setTimeout(function () {
+                toast.classList.remove('show');
+                setTimeout(function () { toast.remove(); }, 300);
+            }, 2000);
+        }
+
+        // ==================== Person Ops ====================
+        function addPerson() {
+            if (state.people.length >= 6) return;
+            state.people.push({ id: genId(), name: '', isLocal: false });
+            save();
+            renderPeople();
+        }
+
+        function removePerson(id) {
+            if (state.people.length <= 2) {
+                showToast('至少需要保留2人');
+                return;
+            }
+            var person = getPerson(id);
+            if (!person) return;
+            var name = getPersonName(person);
+            if (!confirm('确定删除「' + name + '」？相关账单中的该成员也会移除。')) return;
+
+            var wasLocal = person.isLocal;
+            state.people = state.people.filter(function (p) { return p.id !== id; });
+
+            // If we removed the local user, make the first person local
+            if (wasLocal && state.people.length > 0) {
+                state.people[0].isLocal = true;
+            }
+
+            // Fix expenses
+            state.expenses.forEach(function (e) {
+                e.splitterIds = e.splitterIds.filter(function (sid) { return sid !== id; });
+                if (e.splitterIds.length === 0 && state.people.length > 0) {
+                    e.splitterIds = state.people.map(function (p) { return p.id; });
+                }
+                if (e.payerId === id) {
+                    e.payerId = state.people[0] ? state.people[0].id : '';
+                }
+            });
+
+            save();
+            renderPeople();
+            showToast('已删除');
+        }
+
+        function setLocalUser(id) {
+            state.people.forEach(function (p) { p.isLocal = (p.id === id); });
+            save();
+            renderPeople();
+        }
+
+        // ==================== Expense Ops ====================
+        function addExpense() {
+            var allIds = state.people.map(function (p) { return p.id; });
+            state.expenses.push({
+                id: genId(),
+                amount: '',
+                payerId: state.people[0] ? state.people[0].id : '',
+                splitterIds: allIds.slice(),
+                note: '',
+            });
+            save();
+            renderExpenses();
+            // Scroll to the new card
+            setTimeout(function () {
+                var cards = document.querySelectorAll('.expense-card');
+                if (cards.length > 0) {
+                    cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    var input = cards[cards.length - 1].querySelector('.amount-input');
+                    if (input) input.focus();
+                }
+            }, 100);
+        }
+
+        function removeExpense(id) {
+            state.expenses = state.expenses.filter(function (e) { return e.id !== id; });
+            save();
+            renderExpenses();
+        }
+
+        function toggleSplitter(expenseId, personId, chipEl) {
+            var expense = state.expenses.find(function (e) { return e.id === expenseId; });
+            if (!expense) return;
+
+            var idx = expense.splitterIds.indexOf(personId);
+            if (idx >= 0) {
+                if (expense.splitterIds.length <= 1) {
+                    showToast('至少需要选择1人平摊');
+                    return;
+                }
+                expense.splitterIds.splice(idx, 1);
+                chipEl.classList.remove('active');
+            } else {
+                expense.splitterIds.push(personId);
+                chipEl.classList.add('active');
+            }
+            save();
+            updateTotalDisplay();
+        }
+
+        // ==================== Calculations ====================
+        function calculateShares(amountCents, splitterIds, localUserId) {
+            var n = splitterIds.length;
+            if (n === 0) return {};
+            var baseShare = Math.floor(amountCents / n);
+            var totalBase = baseShare * n;
+            var remainder = amountCents - totalBase;
+
+            var shares = {};
+            var remainderAssigned = false;
+
+            for (var i = 0; i < splitterIds.length; i++) {
+                var sid = splitterIds[i];
+                if (sid === localUserId && !remainderAssigned) {
+                    shares[sid] = baseShare + remainder;
+                    remainderAssigned = true;
+                } else {
+                    shares[sid] = baseShare;
+                }
+            }
+
+            if (!remainderAssigned && splitterIds.length > 0) {
+                shares[splitterIds[0]] = baseShare + remainder;
+            }
+
+            return shares;
+        }
+
+        function calculateBalances() {
+            var balances = {};
+            state.people.forEach(function (p) { balances[p.id] = 0; });
+
+            state.expenses.forEach(function (expense) {
+                var amountCents = toCents(expense.amount);
+                if (amountCents <= 0) return;
+
+                // Payer paid the full amount
+                if (balances[expense.payerId] !== undefined) {
+                    balances[expense.payerId] += amountCents;
+                }
+
+                // Splitters owe their share
+                var validSplitters = expense.splitterIds.filter(function (id) {
+                    return balances[id] !== undefined;
+                });
+                if (validSplitters.length === 0) return;
+
+                var shares = calculateShares(amountCents, validSplitters, getLocalUserId());
+                Object.keys(shares).forEach(function (id) {
+                    balances[id] -= shares[id];
+                });
+            });
+
+            return balances;
+        }
+
+        function calculateSettlements() {
+            var balances = calculateBalances();
+            var creditors = [];
+            var debtors = [];
+
+            Object.keys(balances).forEach(function (id) {
+                var cents = balances[id];
+                if (cents > 0) creditors.push({ id: id, cents: cents });
+                else if (cents < 0) debtors.push({ id: id, cents: -cents });
+            });
+
+            creditors.sort(function (a, b) { return b.cents - a.cents; });
+            debtors.sort(function (a, b) { return b.cents - a.cents; });
+
+            var transfers = [];
+            var ci = 0, di = 0;
+
+            while (ci < creditors.length && di < debtors.length) {
+                var amount = Math.min(creditors[ci].cents, debtors[di].cents);
+                if (amount > 0) {
+                    transfers.push({
+                        from: debtors[di].id,
+                        to: creditors[ci].id,
+                        cents: amount,
+                    });
+                }
+                creditors[ci].cents -= amount;
+                debtors[di].cents -= amount;
+                if (creditors[ci].cents <= 0) ci++;
+                if (debtors[di].cents <= 0) di++;
+            }
+
+            return transfers;
+        }
+
+        // ==================== Rendering ====================
+        function renderPeople() {
+            var list = document.getElementById('people-list');
+            var html = state.people.map(function (p, i) {
+                var avatar = '';
+                if (p.isLocal) {
+                    avatar = '🏠';
+                } else {
+                    avatar = String(i + 1);
+                }
+                return '<div class="person-card card">' +
+                    '<div class="person-avatar">' + escapeHtml(avatar) + '</div>' +
+                    '<input type="text" class="person-name-input" placeholder="用户' + (i + 1) + '" value="' + escapeHtml(p.name) + '" data-id="' + p.id + '" maxlength="12">' +
+                    '<button class="local-toggle ' + (p.isLocal ? 'active' : '') + '" data-local-id="' + p.id + '" title="设为本地用户">🏠</button>' +
+                    (state.people.length > 2 ? '<button class="icon-btn danger" data-remove-person="' + p.id + '" title="删除">✕</button>' : '') +
+                    '</div>';
+            }).join('');
+            list.innerHTML = html;
+
+            var addBtn = document.getElementById('add-person-btn');
+            addBtn.disabled = state.people.length >= 6;
+        }
+
+        function renderExpenses() {
+            var list = document.getElementById('expense-list');
+
+            if (state.expenses.length === 0) {
+                list.innerHTML = '<div class="card empty-state">' +
+                    '<div class="empty-icon">🧾</div>' +
+                    '<p>还没有账单记录</p>' +
+                    '<p class="empty-hint">点击下方按钮添加第一笔</p>' +
+                    '</div>';
+                updateTotalDisplay();
+                return;
+            }
+
+            var html = state.expenses.map(function (e, i) {
+                var chipsHtml = state.people.map(function (p) {
+                    var active = e.splitterIds.indexOf(p.id) >= 0;
+                    return '<button class="chip ' + (active ? 'active' : '') + '" ' +
+                        'data-chip-expense="' + e.id + '" data-chip-person="' + p.id + '">' +
+                        escapeHtml(getPersonName(p)) +
+                        '</button>';
+                }).join('');
+
+                var optionsHtml = state.people.map(function (p) {
+                    return '<option value="' + p.id + '"' + (e.payerId === p.id ? ' selected' : '') + '>' +
+                        escapeHtml(getPersonName(p)) +
+                        '</option>';
+                }).join('');
+
+                return '<div class="expense-card card">' +
+                    '<div class="expense-header">' +
+                    '<span class="expense-num">账单 #' + (i + 1) + '</span>' +
+                    '<button class="icon-btn danger" data-remove-expense="' + e.id + '">✕</button>' +
+                    '</div>' +
+                    '<div class="expense-amount-row">' +
+                    '<span class="currency">¥</span>' +
+                    '<input type="number" class="amount-input" placeholder="0.00" value="' + escapeHtml(e.amount) + '" data-amount-id="' + e.id + '" step="0.01" min="0" inputmode="decimal">' +
+                    '</div>' +
+                    '<div class="expense-field">' +
+                    '<label>谁付的钱</label>' +
+                    '<select class="payer-select" data-payer-id="' + e.id + '">' + optionsHtml + '</select>' +
+                    '</div>' +
+                    '<div class="expense-field">' +
+                    '<label>谁来平摊（选1人=对方全付）</label>' +
+                    '<div class="splitter-chips">' + chipsHtml + '</div>' +
+                    '</div>' +
+                    '<input type="text" class="note-input" placeholder="📝 备注（可选）" value="' + escapeHtml(e.note || '') + '" data-note-id="' + e.id + '" maxlength="30">' +
+                    '</div>';
+            }).join('');
+
+            list.innerHTML = html;
+            updateTotalDisplay();
+        }
+
+        function updateTotalDisplay() {
+            var total = state.expenses.reduce(function (sum, e) { return sum + toCents(e.amount); }, 0);
+            var el = document.getElementById('total-display');
+            if (el) el.textContent = '总计 ¥' + formatYuan(total);
+        }
+
+        function renderResults() {
+            var container = document.getElementById('results-content');
+            var balances = calculateBalances();
+            var transfers = calculateSettlements();
+
+            var totalCents = state.expenses.reduce(function (sum, e) { return sum + toCents(e.amount); }, 0);
+            var validCount = state.expenses.filter(function (e) { return toCents(e.amount) > 0; }).length;
+
+            var html = '';
+
+            // Summary
+            html += '<div class="summary-card card">' +
+                '<div class="summary-item"><span class="summary-label">总消费</span><span class="summary-value">¥' + formatYuan(totalCents) + '</span></div>' +
+                '<div class="summary-divider"></div>' +
+                '<div class="summary-item"><span class="summary-label">账单数</span><span class="summary-value">' + validCount + '</span></div>' +
+                '<div class="summary-divider"></div>' +
+                '<div class="summary-item"><span class="summary-label">人数</span><span class="summary-value">' + state.people.length + '</span></div>' +
+                '</div>';
+
+            // Per-person balances
+            html += '<h3 class="results-section-title">📊 个人账单</h3>';
+            state.people.forEach(function (p) {
+                var cents = balances[p.id] || 0;
+                var cls = cents > 0 ? 'positive' : cents < 0 ? 'negative' : 'neutral';
+                var label = cents > 0 ? '应收' : cents < 0 ? '应付' : '已平';
+                html += '<div class="balance-row card">' +
+                    '<span class="balance-name">' + escapeHtml(getPersonName(p)) + (p.isLocal ? ' 🏠' : '') + '</span>' +
+                    '<span class="balance-amount ' + cls + '">' + label + ' ¥' + formatYuan(Math.abs(cents)) + '</span>' +
+                    '</div>';
+            });
+
+            // Transfers
+            html += '<h3 class="results-section-title">💸 转账建议</h3>';
+            if (transfers.length === 0) {
+                if (validCount === 0) {
+                    html += '<div class="card empty-state"><div class="empty-icon">🧾</div><p>还没有账单</p><p class="empty-hint">去"账单"页添加消费记录</p></div>';
+                } else {
+                    html += '<div class="card empty-state"><div class="empty-icon">✅</div><p>所有账单已结清！</p></div>';
+                }
+            } else {
+                transfers.forEach(function (t) {
+                    var fromP = getPerson(t.from);
+                    var toP = getPerson(t.to);
+                    html += '<div class="transfer-card card">' +
+                        '<div class="transfer-person transfer-from">' + escapeHtml(getPersonName(fromP)) + '</div>' +
+                        '<div class="transfer-arrow">' +
+                        '<span class="transfer-amount">¥' + formatYuan(t.cents) + '</span>' +
+                        '<span class="arrow">→</span>' +
+                        '</div>' +
+                        '<div class="transfer-person transfer-to">' + escapeHtml(getPersonName(toP)) + '</div>' +
+                        '</div>';
+                });
+
+                // Copy button
+                html += '<button class="btn btn-outline btn-block" id="copy-results-btn">📋 复制转账详情</button>';
+            }
+
+            container.innerHTML = html;
+
+            // Bind copy button
+            var copyBtn = document.getElementById('copy-results-btn');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    var lines = transfers.map(function (t) {
+                        return getPersonName(getPerson(t.from)) + ' → ' + getPersonName(getPerson(t.to)) + '：¥' + formatYuan(t.cents);
+                    });
+                    var text = 'AA账单结算：\n' + lines.join('\n') + '\n总计：¥' + formatYuan(totalCents);
+                    copyToClipboard(text);
+                });
+            }
+        }
+
+        function copyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function () {
+                    showToast('已复制到剪贴板');
+                }).catch(function () {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+
+        function fallbackCopy(text) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                showToast('已复制到剪贴板');
+            } catch (e) {
+                showToast('复制失败，请手动选择');
+            }
+            document.body.removeChild(ta);
+        }
+
+        // ==================== Tab Switching ====================
+        function switchTab(tabName) {
+            state.activeTab = tabName;
+            document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+            var panel = document.getElementById('tab-' + tabName);
+            if (panel) panel.classList.add('active');
+
+            document.querySelectorAll('.tab-item').forEach(function (t) { t.classList.remove('active'); });
+            var tab = document.querySelector('.tab-item[data-tab="' + tabName + '"]');
+            if (tab) tab.classList.add('active');
+
+            if (tabName === 'people') renderPeople();
+            if (tabName === 'bills') renderExpenses();
+            if (tabName === 'results') renderResults();
+
+            save();
+            window.scrollTo(0, 0);
+        }
+
+        // ==================== Reset ====================
+        function resetAll() {
+            if (!confirm('确定要清除所有数据吗？此操作不可撤销。')) return;
+            state = {
+                people: [
+                    { id: genId(), name: '', isLocal: true },
+                    { id: genId(), name: '', isLocal: false },
+                ],
+                expenses: [],
+                activeTab: 'people',
+            };
+            save();
+            switchTab('people');
+            showToast('已重置');
+        }
+
+        // ==================== Main Render ====================
+        function renderAll() {
+            renderPeople();
+            renderExpenses();
+        }
+
+        // ==================== Event Handling ====================
+        document.addEventListener('click', function (e) {
+            // Tab switching
+            var tabItem = e.target.closest('.tab-item');
+            if (tabItem) {
+                switchTab(tabItem.dataset.tab);
+                return;
+            }
+
+            // Add person
+            if (e.target.id === 'add-person-btn') {
+                addPerson();
+                return;
+            }
+
+            // Add expense
+            if (e.target.id === 'add-expense-btn') {
+                addExpense();
+                return;
+            }
+
+            // Reset
+            if (e.target.id === 'reset-btn') {
+                resetAll();
+                return;
+            }
+
+            // Remove person
+            var removePersonEl = e.target.closest('[data-remove-person]');
+            if (removePersonEl) {
+                removePerson(removePersonEl.dataset.removePerson);
+                return;
+            }
+
+            // Remove expense
+            var removeExpenseEl = e.target.closest('[data-remove-expense]');
+            if (removeExpenseEl) {
+                removeExpense(removeExpenseEl.dataset.removeExpense);
+                return;
+            }
+
+            // Local user toggle
+            var localEl = e.target.closest('[data-local-id]');
+            if (localEl) {
+                setLocalUser(localEl.dataset.localId);
+                return;
+            }
+
+            // Splitter chip toggle
+            var chipEl = e.target.closest('[data-chip-expense]');
+            if (chipEl) {
+                toggleSplitter(chipEl.dataset.chipExpense, chipEl.dataset.chipPerson, chipEl);
+                return;
+            }
         });
-      });
-    }
-  </script>
+
+        document.addEventListener('input', function (e) {
+            var target = e.target;
+
+            // Person name
+            if (target.classList && target.classList.contains('person-name-input')) {
+                var person = getPerson(target.dataset.id);
+                if (person) {
+                    person.name = target.value;
+                    save();
+                }
+                return;
+            }
+
+            // Amount
+            if (target.classList && target.classList.contains('amount-input')) {
+                var expense = state.expenses.find(function (ex) { return ex.id === target.dataset.amountId; });
+                if (expense) {
+                    expense.amount = target.value;
+                    save();
+                    updateTotalDisplay();
+                }
+                return;
+            }
+
+            // Payer
+            if (target.classList && target.classList.contains('payer-select')) {
+                var exp = state.expenses.find(function (ex) { return ex.id === target.dataset.payerId; });
+                if (exp) {
+                    exp.payerId = target.value;
+                    save();
+                }
+                return;
+            }
+
+            // Note
+            if (target.classList && target.classList.contains('note-input')) {
+                var exp2 = state.expenses.find(function (ex) { return ex.id === target.dataset.noteId; });
+                if (exp2) {
+                    exp2.note = target.value;
+                    save();
+                }
+                return;
+            }
+        });
+
+        // ==================== Init ====================
+        load();
+        renderAll();
+    </script>
 </body>
 </html>
