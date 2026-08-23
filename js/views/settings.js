@@ -9,6 +9,14 @@ import { APP_VERSION } from '../version.js';
 export async function renderSettings(mount) {
   const count = await countTransactions();
 
+  const settingsIntro = el('header', { class: 'settings-intro' }, [
+    el('div', { class: 'settings-avatar', 'aria-hidden': 'true', text: '📒' }),
+    el('div', {}, [
+      el('h1', { text: '我的' }),
+      el('p', { text: '数据只属于你，也只保存在本机' })
+    ])
+  ]);
+
   // Data group
   const dataGroup = el('div', { class: 'setting-list' }, [
     el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/budget' }, [
@@ -115,7 +123,7 @@ export async function renderSettings(mount) {
     el('div', { class: 'text-sm', text: '默认纯本地运行 · 备份可密码加密' })
   ]);
 
-  mount.append(dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
+  mount.append(settingsIntro, dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
 
   // Hidden file input for import
   const fileInput = document.createElement('input');

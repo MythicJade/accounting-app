@@ -16,15 +16,15 @@ export async function renderAccounts(mount) {
     el('button', { class: 'back', type: 'button', 'aria-label': '返回首页', onclick: () => location.hash = '#/' }, [
       el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
     ]),
-    el('h1', { text: '账户管理' }),
-    el('button', { class: 'btn-text', onclick: () => showAccountForm(null) }, [el('span', { text: '+ 新增' })])
+    el('h1', { text: '账户资产' }),
+    el('button', { class: 'btn-text topbar-action', onclick: () => showAccountForm(null) }, [el('span', { text: '新增' })])
   ]);
 
   // === 顶部净资产汇总 + 右侧两个入口框 ===
   const summaryArea = el('div', { class: 'accounts-summary-area' }, [
-    // 左：净资产渐变卡
+    // 左：净资产汇总卡
     el('div', { class: 'card summary-card account-summary-card' }, [
-      el('div', { class: 'summary-month', text: '净资产合计' }),
+      el('div', { class: 'summary-month', text: '净资产' }),
       el('div', { class: 'summary-balance' }, [
         el('div', { class: 'summary-amount', text: formatMoney(summary.netAssets) })
       ]),
@@ -42,11 +42,15 @@ export async function renderAccounts(mount) {
     // 右：两个小入口框
     el('div', { class: 'accounts-entry-boxes' }, [
       el('button', { class: 'entry-box', type: 'button', onclick: () => location.hash = '#/assets' }, [
-        el('div', { class: 'entry-icon', text: '📈' }),
+        el('div', { class: 'entry-icon entry-icon-trend' }, [
+          el('svg', { viewBox: '0 0 24 24', width: '22', height: '22', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'aria-hidden': 'true', html: '<path d="M4 17 9 12l3 3 7-8"/><path d="M14 7h5v5"/>' })
+        ]),
         el('div', { class: 'entry-label', text: '资产趋势' })
       ]),
       el('button', { class: 'entry-box', type: 'button', onclick: () => showAccountForm(null) }, [
-        el('div', { class: 'entry-icon', text: '➕' }),
+        el('div', { class: 'entry-icon entry-icon-add' }, [
+          el('svg', { viewBox: '0 0 24 24', width: '22', height: '22', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'aria-hidden': 'true', html: '<path d="M12 5v14M5 12h14"/>' })
+        ]),
         el('div', { class: 'entry-label', text: '增加账户' })
       ])
     ])
@@ -60,12 +64,12 @@ export async function renderAccounts(mount) {
   const listsArea = el('div', { class: 'account-lists' });
 
   // 资金分区
-  listsArea.appendChild(buildSection('💰 资金', summary.byType.asset || 0, assetAccounts, balances));
+  listsArea.appendChild(buildSection('资金', 'asset', summary.byType.asset || 0, assetAccounts, balances));
   // 信用分区
-  listsArea.appendChild(buildSection('💳 信用', summary.byType.credit || 0, creditAccounts, balances));
+  listsArea.appendChild(buildSection('信用', 'credit', summary.byType.credit || 0, creditAccounts, balances));
   if (archivedAccounts.length) {
     const archivedSubtotal = archivedAccounts.reduce((sum, account) => sum + (balances.get(account.id) || 0), 0);
-    listsArea.appendChild(buildSection('📦 已归档', archivedSubtotal, archivedAccounts, balances));
+    listsArea.appendChild(buildSection('已归档', 'archived', archivedSubtotal, archivedAccounts, balances));
   }
 
   // 转账按钮
@@ -78,7 +82,7 @@ export async function renderAccounts(mount) {
   mount.append(topbar, summaryArea, listsArea, transferBtn);
 
   // === 构建单个分区（标题 + 小计 + 账户卡网格）===
-  function buildSection(title, subtotal, accs, balances) {
+  function buildSection(title, sectionType, subtotal, accs, balances) {
     const grid = el('div', { class: 'account-section-grid' });
     if (accs.length === 0) {
       grid.appendChild(el('div', { class: 'account-empty', text: '暂无账户' }));
@@ -87,21 +91,26 @@ export async function renderAccounts(mount) {
         const bal = balances.get(acc.id) || 0;
         const balClass = bal < 0 ? 'expense' : '';
         const card = el('button', {
-          class: 'account-mini-card' + (acc.type === 'credit' ? ' credit' : ''),
+          class: 'account-mini-card' + (acc.type === 'credit' ? ' credit' : '') + (acc.archived ? ' archived' : ''),
           type: 'button',
+          style: `--account-color:${acc.color};--account-ink:${contrastInk(acc.color)}`,
           onclick: () => location.hash = '#/accounts/' + acc.id
         }, [
-          el('div', { class: 'mini-icon', style: `background:${acc.color}22;color:${acc.color}` }, [document.createTextNode(acc.icon)]),
-          el('div', { class: 'mini-name', text: acc.name }),
+          el('div', { class: 'mini-icon' }, [document.createTextNode(acc.icon)]),
+          el('div', { class: 'mini-copy' }, [
+            el('div', { class: 'mini-name', text: acc.name }),
+            el('div', { class: 'mini-kind', text: acc.archived ? '历史账户' : (acc.type === 'credit' ? '信用账户' : '资金账户') })
+          ]),
           el('div', { class: 'mini-amount ' + balClass, text: formatMoney(bal) })
         ]);
         grid.appendChild(card);
       });
     }
     return el('section', { class: 'card account-type-section' }, [
-      el('div', { class: 'between items-center', style: 'margin-bottom:10px;' }, [
+      el('div', { class: 'account-section-head' }, [
+        el('span', { class: `account-section-dot ${sectionType}`, 'aria-hidden': 'true' }),
         el('span', { class: 'section-title', text: title }),
-        el('span', { class: 'section-subtotal ' + (subtotal < 0 ? 'expense' : ''), text: '小计 ' + formatMoney(subtotal) })
+        el('span', { class: 'section-subtotal ' + (subtotal < 0 ? 'expense' : ''), text: formatMoney(subtotal) })
       ]),
       grid
     ]);
@@ -330,4 +339,14 @@ export async function renderAccounts(mount) {
     mount.removeEventListener('touchstart', onStart);
     mount.removeEventListener('touchend', onEnd);
   };
+}
+
+function contrastInk(hex) {
+  const value = String(hex || '').replace('#', '');
+  const normalized = value.length === 3 ? value.split('').map(ch => ch + ch).join('') : value;
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return '#ffffff';
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 172 ? '#25272b' : '#ffffff';
 }

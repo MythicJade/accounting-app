@@ -62,8 +62,11 @@ export async function renderAddTransaction(mount, params = {}) {
   // Amount display（键盘固定显示，无需点击弹窗）
   const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'empty'), text: state.amount || '0.00' });
   const amountDisplay = el('div', { class: 'amount-display amount-compact' }, [
-    el('span', { class: 'currency', text: '¥' }),
-    amountValue
+    el('span', { class: 'amount-caption', text: editId ? '修改金额' : '记账金额' }),
+    el('div', { class: 'amount-number' }, [
+      el('span', { class: 'currency', text: '¥' }),
+      amountValue
+    ])
   ]);
 
   // ===== Category carousel (5 cols × 2 rows per page, horizontal swipe) =====
@@ -186,7 +189,11 @@ export async function renderAddTransaction(mount, params = {}) {
   window.addEventListener('mouseup', onMouseUp);
 
   renderCats();
-  const catCard = el('section', { class: 'card add-cat-card' }, [catCarousel, catDots]);
+  const catCard = el('section', { class: 'card add-cat-card' }, [
+    el('div', { class: 'add-section-label', text: '选择分类' }),
+    catCarousel,
+    catDots
+  ]);
 
   // Transfer-specific fields (from / to account selectors)
   const fromSelect = el('select', { class: 'input', id: 'add-from-account' });

@@ -24,7 +24,11 @@ export async function renderTransactions(mount) {
     el('a', { class: 'btn-text', href: '#/add', text: '+ 记一笔' })
   ]);
 
-  const search = el('input', { class: 'input', type: 'search', placeholder: '搜索备注、账户、分类或日期', 'aria-label': '搜索流水' });
+  const search = el('input', { class: 'input transaction-search-input', type: 'search', placeholder: '搜索账单', 'aria-label': '搜索流水' });
+  const searchBox = el('div', { class: 'transaction-search-box' }, [
+    el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>' }),
+    search
+  ]);
   const type = el('select', { class: 'select', 'aria-label': '按类型筛选' }, [
     el('option', { value: '', text: '全部类型' }),
     el('option', { value: 'expense', text: '支出' }),
@@ -42,7 +46,7 @@ export async function renderTransactions(mount) {
   const to = el('input', { class: 'input', type: 'date', 'aria-label': '结束日期' });
   const reset = el('button', { class: 'btn btn-ghost transaction-reset', type: 'button', text: '重置' });
   const filter = el('section', { class: 'card transaction-filters', 'aria-label': '流水筛选' }, [
-    search,
+    searchBox,
     el('div', { class: 'filter-row' }, [type, account]),
     el('div', { class: 'filter-row' }, [from, to]),
     reset

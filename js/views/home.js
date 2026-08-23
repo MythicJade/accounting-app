@@ -40,6 +40,22 @@ export async function renderHome(mount) {
 
   const nodes = [];
 
+  const homeHeader = el('header', { class: 'home-header' }, [
+    el('div', { class: 'home-title-block' }, [
+      el('span', { class: 'home-kicker', text: '离线账本' }),
+      el('h1', { text: '我的账本' })
+    ]),
+    el('a', { class: 'home-account-button', href: '#/accounts', 'aria-label': '查看账户与资产' }, [
+      el('svg', { viewBox: '0 0 24 24', width: '24', height: '24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h11.5"/><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"/>' })
+    ])
+  ]);
+  const searchEntry = el('a', { class: 'home-search', href: '#/transactions', 'aria-label': '搜索账单' }, [
+    el('svg', { viewBox: '0 0 24 24', width: '21', height: '21', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>' }),
+    el('span', { text: '搜索账单、账户或备注' }),
+    el('span', { class: 'search-arrow', 'aria-hidden': 'true', text: '›' })
+  ]);
+  nodes.push(homeHeader, searchEntry);
+
   if (!activeAccounts.length || !activeCategories.length) {
     const setupButton = el('button', { class: 'btn', type: 'button', text: '一键初始化' });
     setupButton.addEventListener('click', async () => {
@@ -77,11 +93,33 @@ export async function renderHome(mount) {
     }, 3000);
   }
 
+  const budgetDetails = limit > 0
+    ? el('a', { class: 'overview-budget', href: '#/budget' }, [
+        el('div', { class: 'overview-budget-copy' }, [
+          el('span', { text: pct >= 100 ? '预算已超支' : '本月预算' }),
+          el('strong', { text: pct >= 100 ? `超出 ${formatMoney(Math.abs(remaining))}` : `还可用 ${formatMoney(Math.max(0, remaining))}` })
+        ]),
+        el('div', { class: 'overview-budget-progress' }, [
+          el('i', { class: progressClass, style: `width:${pct}%` })
+        ]),
+        el('span', { class: 'overview-budget-percent', text: `${pct}%` })
+      ])
+    : el('a', { class: 'overview-budget is-empty', href: '#/budget' }, [
+        el('div', { class: 'overview-budget-copy' }, [
+          el('span', { text: '本月预算' }),
+          el('strong', { text: '设置预算，让消费更有数' })
+        ]),
+        el('span', { class: 'overview-budget-action', text: '去设置' })
+      ]);
+
   // Summary card
-  const summaryCard = el('section', { class: 'card summary-card' }, [
-    el('div', { class: 'summary-month', text: monthKeyToLabel(monthKey) }),
+  const summaryCard = el('section', { class: 'card summary-card home-overview' }, [
+    el('div', { class: 'summary-card-head' }, [
+      el('div', { class: 'summary-month', text: monthKeyToLabel(monthKey) }),
+      el('a', { class: 'summary-detail-link', href: '#/stats', text: '查看统计 ›' })
+    ]),
     el('div', { class: 'summary-balance' }, [
-      el('span', { class: 'summary-label', text: '本月结余（全部）' }),
+      el('span', { class: 'summary-label', text: '本月结余' }),
       el('div', { class: 'summary-amount', text: formatMoney(summary.balance) })
     ]),
     el('div', { class: 'summary-row' }, [
@@ -93,37 +131,16 @@ export async function renderHome(mount) {
         el('div', { class: 'summary-sub-label', text: '支出' }),
         el('div', { class: 'summary-sub-amount expense', text: formatMoney(summary.expense) })
       ])
-    ])
+    ]),
+    budgetDetails
   ]);
   nodes.push(summaryCard);
 
-  // Budget progress card (only if budget set)
-  if (limit > 0) {
-    const budgetCard = el('section', { class: 'card budget-mini' }, [
-      el('div', { class: 'between items-center', style: 'margin-bottom:8px;' }, [
-        el('span', { class: 'text-sm text-2', text: '本月预算' }),
-        el('span', { class: 'text-sm', text: `${formatMoney(used)} / ${formatMoney(limit)}` })
-      ]),
-      el('div', { class: 'progress ' + progressClass }, [ el('i', { style: `width:${pct}%` }) ]),
-      el('div', { class: 'between items-center text-sm text-2', style: 'margin-top:6px;' }, [
-        el('span', { text: pct >= 100 ? '已超支' : '剩余' }),
-        el('span', { text: formatMoney(Math.abs(remaining)) })
-      ])
-    ]);
-    nodes.push(budgetCard);
-  } else {
-    const setBudget = el('section', { class: 'card budget-mini center' }, [
-      el('span', { class: 'text-sm text-2', text: '尚未设置本月预算，' }),
-      el('a', { class: 'text-sm', href: '#/budget', text: '去设置 →' })
-    ]);
-    nodes.push(setBudget);
-  }
-
   // Recent transactions — 不使用 card 容器，让每个 tx-item 独立显示为白底分框
   const recentCard = el('section', { class: 'tx-section' });
-  const header = el('div', { class: 'card-title', style: 'padding:0 4px;' }, [
+  const header = el('div', { class: 'card-title section-heading' }, [
     el('span', { text: '最近流水' }),
-    recent.length > 0 ? el('a', { class: 'text-sm', href: '#/transactions', text: '查看全部' }) : null
+    recent.length > 0 ? el('a', { class: 'text-sm', href: '#/transactions', text: '全部流水 ›' }) : null
   ]);
   recentCard.appendChild(header);
 

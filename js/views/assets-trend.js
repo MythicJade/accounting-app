@@ -8,7 +8,7 @@ export async function renderAssetsTrend(mount) {
   let year = new Date().getFullYear();
   let selected = null; // { seriesIdx, pointIdx }
 
-  const topbar = el('header', { class: 'topbar' }, [
+  const topbar = el('header', { class: 'topbar asset-topbar' }, [
     el('button', { class: 'back', type: 'button', 'aria-label': '返回账户管理', onclick: () => location.hash = '#/accounts' }, [
       el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
     ]),
@@ -27,9 +27,12 @@ export async function renderAssetsTrend(mount) {
     const data = await monthlyAssetTrend(year);
 
     // 年份导航
-    const yearNav = el('div', { class: 'year-nav between items-center' }, [
+    const yearNav = el('div', { class: 'year-nav' }, [
       el('button', { class: 'range-btn', type: 'button', 'aria-label': '上一年', onclick: () => { year--; selected = null; render(); }, text: '‹' }),
-      el('span', { class: 'range-label', text: year + '年' }),
+      el('div', { class: 'year-nav-copy' }, [
+        el('span', { class: 'range-label', text: year + '年' }),
+        el('span', { class: 'range-dates', text: `${year}/01/01–${year}/12/31` })
+      ]),
       el('button', { class: 'range-btn', type: 'button', 'aria-label': '下一年', onclick: () => { year++; selected = null; render(); }, text: '›' })
     ]);
     content.appendChild(yearNav);
@@ -40,7 +43,7 @@ export async function renderAssetsTrend(mount) {
       if (data[i].netAssets != null) { latest = data[i]; break; }
     }
     if (latest) {
-      const summaryCard = el('section', { class: 'card summary-card' }, [
+      const summaryCard = el('section', { class: 'card summary-card asset-snapshot' }, [
         el('div', { class: 'summary-month', text: latest.label + '末净资产' }),
         el('div', { class: 'summary-balance' }, [
           el('div', { class: 'summary-amount', text: formatMoney(latest.netAssets) })
@@ -60,14 +63,14 @@ export async function renderAssetsTrend(mount) {
     }
 
     // 折线图
-    const chartCard = el('section', { class: 'card chart-card' }, [
-      el('div', { class: 'card-title' }, [
-        el('span', { text: '月度趋势' }),
-        el('span', { class: 'text-sm text-3', style: 'display:flex;gap:12px;' }, [
-          el('span', { text: '● 净资产', style: 'color:#34C759;' }),
-          el('span', { text: '● 总资产', style: 'color:#007AFF;' }),
-          el('span', { text: '● 总负债', style: 'color:#FF3B30;' })
-        ])
+    const chartCard = el('section', { class: 'card chart-card asset-chart-card' }, [
+      el('div', { class: 'card-title section-heading' }, [
+        el('span', { text: '资产变化' })
+      ]),
+      el('div', { class: 'chart-legend' }, [
+        el('span', { class: 'legend-pill net', text: '净资产' }),
+        el('span', { class: 'legend-pill liability', text: '负债总额' }),
+        el('span', { class: 'legend-pill asset', text: '资产总额' })
       ])
     ]);
     const canvas = el('canvas', { style: 'width:100%;height:240px;', role: 'img', tabindex: '0', 'aria-label': `${year}年净资产、总资产和总负债月度趋势` });
@@ -79,17 +82,17 @@ export async function renderAssetsTrend(mount) {
     const series = [
       {
         label: '净资产',
-        color: '#34C759',
+        color: '#6387FF',
         data: validData.map(d => ({ label: d.label, value: d.netAssets, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总资产',
-        color: '#007AFF',
+        color: '#FFC62E',
         data: validData.map(d => ({ label: d.label, value: d.totalAssets || 0, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总负债',
-        color: '#FF3B30',
+        color: '#FF7B6C',
         data: validData.map(d => ({ label: d.label, value: d.totalLiabilities || 0, fullLabel: year + '年' + d.label }))
       }
     ];
@@ -101,8 +104,6 @@ export async function renderAssetsTrend(mount) {
           if (pointIdx == null) {
             selected = null;
           } else {
-            // 映射回原始 data 的索引
-            const validIdx = validData[pointIdx] ? data.indexOf(validData[pointIdx]) : -1;
             selected = { seriesIdx, pointIdx: pointIdx };
           }
           render();
@@ -111,15 +112,15 @@ export async function renderAssetsTrend(mount) {
     });
 
     // 月度表格
-    const tableCard = el('section', { class: 'card' }, [
-      el('div', { class: 'card-title', text: '月度明细' })
+    const tableCard = el('section', { class: 'card asset-table-card' }, [
+      el('div', { class: 'card-title section-heading', text: '月度明细' })
     ]);
     const table = el('table', { class: 'assets-trend-table' });
     const thead = el('thead', {}, [el('tr', {}, [
       el('th', { text: '月份' }),
       el('th', { text: '净资产' }),
-      el('th', { text: '总资产' }),
-      el('th', { text: '总负债' })
+      el('th', { text: '总负债' }),
+      el('th', { text: '总资产' })
     ])]);
     table.appendChild(thead);
     const tbody = el('tbody', {});
@@ -128,8 +129,8 @@ export async function renderAssetsTrend(mount) {
       const tr = el('tr', { class: isFuture ? 'future' : '' }, [
         el('td', { text: d.label }),
         el('td', { text: isFuture ? '—' : formatMoney(d.netAssets), class: isFuture ? '' : (d.netAssets < 0 ? 'expense' : '') }),
-        el('td', { text: isFuture ? '—' : formatMoney(d.totalAssets || 0), class: 'income' }),
-        el('td', { text: isFuture ? '—' : formatMoney(d.totalLiabilities || 0), class: 'expense' })
+        el('td', { text: isFuture ? '—' : formatMoney(d.totalLiabilities || 0), class: 'expense' }),
+        el('td', { text: isFuture ? '—' : formatMoney(d.totalAssets || 0), class: 'income' })
       ]);
       tbody.appendChild(tr);
     });

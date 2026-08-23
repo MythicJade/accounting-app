@@ -42,7 +42,7 @@ export async function renderStats(mount) {
 
   // Account filter chips
   const accounts = await listAccounts();
-  const accountChips = el('div', { class: 'account-chips' });
+  const accountChips = el('div', { class: 'account-chips stats-account-chips', 'aria-label': '按账户筛选' });
   const allAccChip = el('button', { class: 'chip' + (_state.accountId === null ? ' active' : ''), text: '全部' });
   allAccChip.addEventListener('click', () => { _state.accountId = null; render(); });
   accountChips.appendChild(allAccChip);
@@ -128,7 +128,7 @@ export async function renderStats(mount) {
     _state.selectedSlice = null; _state.selectedPoint = null;
     render();
   }});
-  const customPanel = el('div', { class: 'card', style: 'padding:10px 12px;display:none;' }, [
+  const customPanel = el('div', { class: 'card stats-custom-panel', style: 'display:none;' }, [
     el('div', { style: 'display:flex;gap:8px;align-items:center;' }, [
       el('span', { text: '起', style: 'font-size:12px;color:var(--text-3);' }),
       startInput,
@@ -159,29 +159,34 @@ export async function renderStats(mount) {
   }
 
   // Type toggle (支出/收入)
-  const typeToggle = el('div', { class: 'type-tabs', style: 'margin-bottom:8px;' }, [
+  const typeToggle = el('div', { class: 'type-tabs stats-type-tabs' }, [
     el('button', { class: _state.view === 'expense' ? 'active expense' : '', text: '支出', onclick: () => { _state.view = 'expense'; _state.selectedSlice = null; _state.selectedPoint = null; render(); } }),
     el('button', { class: _state.view === 'income' ? 'active income' : '', text: '收入', onclick: () => { _state.view = 'income'; _state.selectedSlice = null; _state.selectedPoint = null; render(); } })
   ]);
 
   // Summary row
-  const summaryRow = el('div', { class: 'card', style: 'padding:12px 16px;' });
-  const summaryIncome = el('div', { style: 'flex:1;' }, [
-    el('div', { class: 'text-sm text-3', text: '期间收入' }),
-    el('div', { class: 'text-lg', style: 'color:var(--income);font-weight:600;', text: '¥0.00' })
+  const summaryRow = el('div', { class: 'stats-metrics' });
+  const summaryExpense = el('div', { class: 'stats-metric expense-metric' }, [
+    el('div', { class: 'text-sm text-3', text: '支出' }),
+    el('div', { class: 'text-lg', text: '¥0.00' })
   ]);
-  const summaryExpense = el('div', { style: 'flex:1;text-align:right;' }, [
-    el('div', { class: 'text-sm text-3', text: '期间支出' }),
-    el('div', { class: 'text-lg', style: 'color:var(--expense);font-weight:600;', text: '¥0.00' })
+  const summaryIncome = el('div', { class: 'stats-metric income-metric' }, [
+    el('div', { class: 'text-sm text-3', text: '收入' }),
+    el('div', { class: 'text-lg', text: '¥0.00' })
   ]);
-  summaryRow.append(summaryIncome, summaryExpense);
+  const summaryBalance = el('div', { class: 'stats-metric balance-metric' }, [
+    el('div', { class: 'text-sm text-3', text: '结余' }),
+    el('div', { class: 'text-lg', text: '¥0.00' })
+  ]);
+  summaryRow.append(summaryExpense, summaryIncome, summaryBalance);
+  const statsOverview = el('section', { class: 'card stats-overview', dataset: { view: _state.view } }, [typeToggle, summaryRow]);
 
   // Charts
   const pieCanvas = el('canvas', { role: 'img', tabindex: '0', 'aria-label': '分类占比图表，具体数值见下方分类排行' });
   pieCanvas.style.height = '260px';
   const pieHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '点击扇区查看详情' });
   const pieCard = el('section', { class: 'card chart-card' }, [
-    el('div', { class: 'card-title', text: '分类占比' }),
+    el('div', { class: 'card-title section-heading', text: '分类统计' }),
     pieCanvas,
     pieHint
   ]);
@@ -190,19 +195,23 @@ export async function renderStats(mount) {
   lineCanvas.style.height = '220px';
   const lineHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '点击折线查看具体金额' });
   const lineCard = el('section', { class: 'card chart-card' }, [
-    el('div', { class: 'card-title', text: '趋势' }),
+    el('div', { class: 'card-title section-heading', text: '整体趋势' }),
     lineCanvas,
     lineHint
   ]);
 
   // Category rank list
   const rankCard = el('section', { class: 'card' }, [
-    el('div', { class: 'card-title', text: '分类排行' })
+    el('div', { class: 'card-title section-heading', text: '分类排行' })
   ]);
   const rankList = el('div');
   rankCard.appendChild(rankList);
 
-  mount.append(accountChips, periodTabs, rangeNav, customPanel, typeToggle, summaryRow, pieCard, lineCard, rankCard);
+  const statsIntro = el('header', { class: 'stats-intro' }, [
+    el('h1', { text: '收支统计' }),
+    el('p', { text: '看清每一笔钱的去向' })
+  ]);
+  mount.append(statsIntro, periodTabs, rangeNav, customPanel, accountChips, statsOverview, lineCard, pieCard, rankCard);
 
   // Render function (re-renders in place)
   async function render() {
@@ -227,6 +236,7 @@ export async function renderStats(mount) {
       const isExp = i === 0;
       b.className = _state.view === (isExp ? 'expense' : 'income') ? 'active ' + (isExp ? 'expense' : 'income') : '';
     });
+    statsOverview.dataset.view = _state.view;
 
     const range = _state.range;
     const accId = _state.accountId || undefined;
@@ -234,6 +244,7 @@ export async function renderStats(mount) {
     const sums = await sumByType(range.start, range.end, accId);
     summaryIncome.lastChild.textContent = formatMoney(sums.income);
     summaryExpense.lastChild.textContent = formatMoney(sums.expense);
+    summaryBalance.lastChild.textContent = formatMoney(sums.income - sums.expense);
 
     // pie data
     const catMap = await categoryBreakdown(range.start, range.end, _state.view, accId);
@@ -302,7 +313,7 @@ export async function renderStats(mount) {
       _state.selectedPoint = null;
     }
     drawLineChart(lineCanvas, lineData, {
-      color: _state.view === 'income' ? '#34C759' : '#FF3B30',
+      color: _state.view === 'income' ? '#35C98A' : '#FFC62E',
       selected: _state.selectedPoint,
       onSelect: (idx) => {
         _state.selectedPoint = (_state.selectedPoint === idx) ? null : idx;
