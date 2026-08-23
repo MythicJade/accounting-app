@@ -1,9 +1,9 @@
 // js/views/account-detail.js — 账户详情页：年度统计 + 编辑信息 tab 切换
-import { getAccount, updateAccount, deleteAccount } from '../accounts.js';
-import { listTransactions, monthlySummary, getAccountBalance, sumByType } from '../store.js';
+import { getAccount, updateAccount, deleteAccount, archiveAccount, restoreAccount } from '../accounts.js';
+import { listTransactions, getAccountBalance, sumByType, monthlyAccountTrend } from '../store.js';
 import { getAccountsMap } from '../accounts.js';
 import { listCategories } from '../categories.js';
-import { formatMoney, currentMonthKey, monthKeyToLabel, todayStr, getRange, shiftRange, rangeLabel, listDates, monthKeyFromDateStr } from '../format.js';
+import { formatMoney, todayStr } from '../format.js';
 import { drawLineChart } from '../charts/line-chart.js';
 import { toast, confirmDialog, el } from '../ui.js';
 import { router } from '../router.js';
@@ -16,17 +16,16 @@ export async function renderAccountDetail(mount, { id }) {
   }
 
   const balance = await getAccountBalance(id);
-  const opening = acc.openingBalance ? Number(acc.openingBalance) : 0;
 
   let activeTab = 'stats'; // 'stats' | 'edit'
   let year = String(new Date().getFullYear());
 
   const topbar = el('header', { class: 'topbar' }, [
-    el('button', { class: 'back', onclick: () => location.hash = '#/accounts' }, [
+    el('button', { class: 'back', type: 'button', 'aria-label': '返回账户管理', onclick: () => location.hash = '#/accounts' }, [
       el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
     ]),
     el('h1', { text: acc.icon + ' ' + acc.name }),
-    el('button', { class: 'btn-text', onclick: onDelete, style: 'color:var(--expense);' }, [el('span', { text: '删除' })])
+    el('button', { class: 'btn-text', onclick: onArchiveToggle, style: acc.archived ? 'color:var(--c-primary);' : 'color:var(--warning);' }, [el('span', { text: acc.archived ? '恢复' : '归档' })])
   ]);
 
   // 当前余额卡（按账户色，精简：只显示余额）
@@ -77,13 +76,12 @@ export async function renderAccountDetail(mount, { id }) {
     const yNum = Number(year);
     const yearStart = year + '-01-01';
     const yearEnd = year + '-12-31';
-    const today = todayStr();
 
     // 年份导航
     const navRow = el('div', { class: 'between items-center range-nav', style: 'margin-bottom:12px;' }, [
-      el('button', { class: 'range-btn', onclick: () => { year = String(yNum - 1); renderTab(); }, text: '‹' }),
+      el('button', { class: 'range-btn', type: 'button', 'aria-label': '上一年', onclick: () => { year = String(yNum - 1); renderTab(); }, text: '‹' }),
       el('span', { class: 'range-label', text: year + '年' }),
-      el('button', { class: 'range-btn', onclick: () => { year = String(yNum + 1); renderTab(); }, text: '›' })
+      el('button', { class: 'range-btn', type: 'button', 'aria-label': '下一年', onclick: () => { year = String(yNum + 1); renderTab(); }, text: '›' })
     ]);
     container.appendChild(navRow);
 
@@ -109,26 +107,13 @@ export async function renderAccountDetail(mount, { id }) {
     const chartCard = el('section', { class: 'card chart-card' }, [
       el('div', { class: 'card-title', text: '账户余额趋势（按月）' })
     ]);
-    const canvas = el('canvas', { style: 'width:100%;height:200px;' });
+    const canvas = el('canvas', { style: 'width:100%;height:200px;', role: 'img', tabindex: '0', 'aria-label': `${year}年${acc.name}账户余额趋势` });
     chartCard.appendChild(canvas);
     container.appendChild(chartCard);
 
-    // 计算每月末余额：期初 + 截至「该月末或今天」的累计交易影响（含转账）
+    // 计算每月末余额：包含期初日期与跨年度结转；未来月份留空
     const allAccTx = await listTransactions({ accountId: id });
-    const txAsc = allAccTx.slice().sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
-    const lineData = [];
-    for (let m = 1; m <= 12; m++) {
-      const lastDayDate = new Date(yNum, m, 0);
-      const lastDay = year + '-' + String(m).padStart(2, '0') + '-' + String(lastDayDate.getDate()).padStart(2, '0');
-      // 未到月底则用今天作为截止
-      const cutoff = lastDay < today ? lastDay : today;
-      let bal = opening;
-      for (const t of txAsc) {
-        if (t.date <= cutoff) bal += txDelta(t, id);
-        else break;
-      }
-      lineData.push({ label: m + '月', value: round2(bal), fullLabel: year + '年' + m + '月' });
-    }
+    const lineData = await monthlyAccountTrend(id, yNum);
 
     let chartSelected = null;
     const drawChartNow = () => drawLineChart(canvas, lineData, {
@@ -165,7 +150,7 @@ export async function renderAccountDetail(mount, { id }) {
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
         }
-        const item = el('div', { class: 'list-item', onclick: () => { location.hash = '#/edit/' + t.id; } }, [
+        const item = el('button', { class: 'list-item list-item-button', type: 'button', onclick: () => { location.hash = '#/edit/' + t.id; } }, [
           el('div', { class: 'meta', style: 'flex:1;' }, [
             el('div', { class: 'between' }, [
               el('span', { class: 'text-sm', text: nameText }),
@@ -185,8 +170,9 @@ export async function renderAccountDetail(mount, { id }) {
   function renderEditTab(container) {
     const form = el('div', {});
 
-    const nameInput = el('input', { class: 'input', type: 'text', placeholder: '账户名称', value: acc.name, maxlength: 12 });
-    const openingInput = el('input', { class: 'input', type: 'number', placeholder: '0.00', step: '0.01', value: acc.openingBalance != null ? acc.openingBalance : '' });
+    const nameInput = el('input', { class: 'input', type: 'text', 'aria-label': '账户名称', placeholder: '账户名称', value: acc.name, maxlength: 12 });
+    const openingInput = el('input', { class: 'input', type: 'number', 'aria-label': '期初余额', placeholder: '0.00', step: '0.01', value: acc.openingBalance != null ? acc.openingBalance : '' });
+    const openingDateInput = el('input', { class: 'input', type: 'date', 'aria-label': '期初日期', value: acc.openingDate || todayStr() });
 
     // 账户类型
     let selectedType = acc.type === 'credit' ? 'credit' : 'asset';
@@ -206,7 +192,7 @@ export async function renderAccountDetail(mount, { id }) {
     function renderIcons() {
       iconGrid.innerHTML = '';
       icons.forEach(ic => {
-        const item = el('div', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), onclick: () => { selectedIcon = ic; renderIcons(); } }, [
+        const item = el('button', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), type: 'button', 'aria-label': `选择图标 ${ic}`, onclick: () => { selectedIcon = ic; renderIcons(); } }, [
           el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [document.createTextNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
@@ -219,7 +205,7 @@ export async function renderAccountDetail(mount, { id }) {
     function renderColors() {
       colorRow.innerHTML = '';
       colors.forEach(c => {
-        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
+        const sw = el('button', { type: 'button', 'aria-label': `选择颜色 ${c}`, style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
         colorRow.appendChild(sw);
       });
     }
@@ -232,6 +218,8 @@ export async function renderAccountDetail(mount, { id }) {
       typeToggle,
       el('label', { class: 'text-sm text-2', style: 'display:block;margin:12px 0 4px;', text: '期初余额' }),
       openingInput,
+      el('label', { class: 'text-sm text-2', style: 'display:block;margin:12px 0 4px;', text: '期初日期（余额从该日期起计入）' }),
+      openingDateInput,
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择图标' }),
       iconGrid,
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择颜色' }),
@@ -248,7 +236,8 @@ export async function renderAccountDetail(mount, { id }) {
               icon: selectedIcon,
               color: selectedColor,
               type: selectedType,
-              openingBalance: openingBal
+              openingBalance: openingBal,
+              openingDate: openingDateInput.value
             });
             toast('已保存');
             router.dispatch();
@@ -256,17 +245,37 @@ export async function renderAccountDetail(mount, { id }) {
             toast('保存失败：' + (e.message || e));
           }
         }
-      }, [el('span', { text: '保存' })])
+      }, [el('span', { text: '保存' })]),
+      el('button', {
+        class: 'btn btn-danger btn-block',
+        style: 'margin-top:10px;',
+        onclick: onDelete
+      }, [el('span', { text: '永久删除未使用账户' })])
     );
     container.appendChild(form);
   }
 
+  async function onArchiveToggle() {
+    try {
+      if (acc.archived) {
+        await restoreAccount(acc.id);
+        toast('账户已恢复');
+      } else {
+        await archiveAccount(acc.id);
+        toast('账户已归档，历史流水仍保留');
+      }
+      location.hash = '#/accounts';
+    } catch (e) {
+      toast('操作失败：' + (e.message || e));
+    }
+  }
+
   async function onDelete() {
-    const ok = await confirmDialog('确定要删除此账户吗？关联的流水记录仍保留但会显示为未分类。', { danger: true, okText: '删除' });
+    const ok = await confirmDialog('只有未关联任何流水的账户才能永久删除。确定继续吗？', { danger: true, okText: '永久删除' });
     if (!ok) return;
     try {
       await deleteAccount(acc.id);
-      toast('已删除');
+      toast('账户已永久删除');
       location.hash = '#/accounts';
     } catch (e) {
       toast('删除失败：' + (e.message || e));
@@ -302,20 +311,6 @@ export async function renderAccountDetail(mount, { id }) {
   };
 }
 
-// 单笔交易对该账户余额的影响（收入+，支出-，转出-，转入+）
-function txDelta(t, accountId) {
-  let d = 0;
-  if (t.accountId === accountId) {
-    if (t.type === 'income') d += t.amount;
-    else if (t.type === 'expense') d -= t.amount;
-    else if (t.type === 'transfer') d -= t.amount;
-  }
-  if (t.toAccountId === accountId && t.type === 'transfer') d += t.amount;
-  return d;
-}
-
-function round2(n) { return Math.round(n * 100) / 100; }
-
 // 获取账户名（缓存）
 let _accMapCache = null;
 async function getAccountName(id) {
@@ -328,7 +323,7 @@ async function getAccountName(id) {
 }
 
 async function getCategoriesMap() {
-  const list = await listCategories();
+  const list = await listCategories(null, { includeArchived: true });
   const map = new Map();
   list.forEach(c => map.set(c.id, c));
   return map;

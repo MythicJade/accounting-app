@@ -1,22 +1,26 @@
-/* PWA Cache shell */
-const CACHE_NAME = 'accounting-v16';
+/* My Accounting PWA v2.0.0 application shell. */
+const CACHE_NAME = 'accounting-v2.0.0';
 const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.json',
   './css/style.css',
   './js/app.js',
+  './js/pwa.js',
   './js/db.js',
   './js/store.js',
   './js/categories.js',
   './js/accounts.js',
   './js/excel-io.js',
+  './js/backup-crypto.js',
+  './js/date-only.js',
+  './js/money.js',
   './js/format.js',
   './js/router.js',
   './js/ui.js',
   './js/version.js',
-  './js/lib/xlsx.full.min.js',
   './js/views/home.js',
+  './js/views/transactions.js',
   './js/views/add-transaction.js',
   './js/views/stats.js',
   './js/views/budget.js',
@@ -32,57 +36,52 @@ const PRECACHE_URLS = [
   './icons/apple-touch-icon.png'
 ];
 
-self.addEventListener('install', function (event) {
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS)));
+});
+
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(function (cache) {
-      // Use individual fetches so one missing file doesn't break install
-      return Promise.all(
-        PRECACHE_URLS.map(function (url) {
-          return cache.add(url).catch(function (err) {
-            console.warn('SW precache miss:', url, err);
-          });
-        })
-      );
-    }).then(function () {
-      self.skipWaiting();
-    })
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('activate', function (event) {
-  event.waitUntil(
-    caches.keys().then(function (keys) {
-      return Promise.all(
-        keys.filter(function (k) { return k !== CACHE_NAME; })
-          .map(function (k) { return caches.delete(k); })
-      );
-    }).then(function () {
-      self.clients.claim();
-    })
-  );
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-self.addEventListener('fetch', function (event) {
+self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      if (cached) return cached;
-      return fetch(event.request).then(function (resp) {
-        const copy = resp.clone();
-        caches.open(CACHE_NAME).then(function (cache) {
-          cache.put(event.request, copy).catch(function () {});
-        });
-        return resp;
-      }).catch(function () {
-        // Offline fallback - serve cached index for navigation
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-        return new Response('', { status: 504 });
-      });
-    })
-  );
+  if (event.request.mode === 'navigate') {
+    event.respondWith(networkFirstNavigation(event.request));
+    return;
+  }
+  event.respondWith(staleWhileRevalidate(event.request));
 });
+
+async function networkFirstNavigation(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    return (await cache.match(request)) || (await cache.match('./index.html')) || Response.error();
+  }
+}
+
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  const network = fetch(request).then(async response => {
+    if (response.ok && response.type === 'basic') await cache.put(request, response.clone());
+    return response;
+  }).catch(() => null);
+  if (cached) return cached;
+  return (await network) || new Response('', { status: 504, statusText: 'Offline' });
+}

@@ -65,6 +65,7 @@ export class Router {
       if (typeof result === 'function') {
         this.currentCleanup = result;
       }
+      this.mount.focus({ preventScroll: true });
     } catch (e) {
       console.error('Route render error:', e);
       this.mount.innerHTML = '<div class="empty"><p>加载失败：' + (e.message || e) + '</p></div>';

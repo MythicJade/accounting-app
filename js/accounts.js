@@ -1,63 +1,134 @@
-// js/accounts.js — accounts CRUD (默认为空，由用户自定义)
-import { put, getAll, get, deleteRecord, bulkPut, Stores } from './db.js';
+// js/accounts.js — accounts CRUD, archival and reference protection.
+import { put, getAll, get, deleteRecord, Stores } from './db.js';
+import { toCents, fromCents } from './money.js';
+import { assertDateOnly, todayDateOnly } from './date-only.js';
 
-// 初始默认为空：用户自定义账户类型、图标和颜色
-export const DEFAULT_ACCOUNTS = [];
-
-// 兼容老版本：仍可调用 ensureAccounts，但不再自动填充任何账户
 export async function ensureAccounts() {
-  return getAll(Stores.ACCOUNTS);
+  return listAccounts();
 }
 
-export async function listAccounts() {
-  const all = await getAll(Stores.ACCOUNTS);
-  return all.sort((a, b) => (a.sort || 99) - (b.sort || 99));
+export async function listAccounts({ includeArchived = false } = {}) {
+  const all = (await getAll(Stores.ACCOUNTS)).map(hydrateAccount);
+  return all
+    .filter(account => includeArchived || !account.archived)
+    .sort((a, b) => (a.sort || 99) - (b.sort || 99) || a.name.localeCompare(b.name, 'zh-CN'));
 }
 
 export async function getAccount(id) {
-  return get(Stores.ACCOUNTS, id);
+  const account = await get(Stores.ACCOUNTS, id);
+  return account ? hydrateAccount(account) : undefined;
 }
 
-export async function addAccount(acc) {
+export async function addAccount(account) {
+  const name = normalizeName(account.name);
+  await assertUniqueName(name);
   const all = await getAll(Stores.ACCOUNTS);
-  const sort = acc.sort != null ? acc.sort : (all.length + 1);
+  const now = Date.now();
   const record = {
-    id: acc.id || ('acc_' + Date.now()),
-    name: acc.name,
-    icon: acc.icon || '💰',
-    color: acc.color || '#007AFF',
-    type: acc.type === 'credit' ? 'credit' : 'asset',
-    sort,
+    id: account.id || createId('acc'),
+    name,
+    icon: account.icon || '💰',
+    color: normalizeColor(account.color),
+    type: account.type === 'credit' ? 'credit' : 'asset',
+    sort: account.sort != null ? Number(account.sort) : all.length + 1,
     builtin: false,
-    openingBalance: acc.openingBalance == null ? 0 : Number(acc.openingBalance) || 0,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    archived: Boolean(account.archived),
+    openingBalanceCents: toCents(account.openingBalance || 0),
+    openingDate: account.openingDate ? assertDateOnly(account.openingDate) : todayDateOnly(),
+    createdAt: now,
+    updatedAt: now
   };
   await put(Stores.ACCOUNTS, record);
-  return record;
+  return hydrateAccount(record);
 }
 
 export async function updateAccount(id, patch) {
   const existing = await get(Stores.ACCOUNTS, id);
   if (!existing) throw new Error('账户不存在');
-  // 允许更新 openingBalance 字段
-  if (patch && patch.openingBalance != null) {
-    patch.openingBalance = Number(patch.openingBalance) || 0;
+  const next = { ...existing };
+  if (patch.name != null) {
+    const name = normalizeName(patch.name);
+    await assertUniqueName(name, id);
+    next.name = name;
   }
-  Object.assign(existing, patch, { updatedAt: Date.now() });
-  return put(Stores.ACCOUNTS, existing);
+  if (patch.icon != null) next.icon = String(patch.icon).slice(0, 8);
+  if (patch.color != null) next.color = normalizeColor(patch.color);
+  if (patch.type != null) next.type = patch.type === 'credit' ? 'credit' : 'asset';
+  if (patch.sort != null) next.sort = Number(patch.sort);
+  if (patch.archived != null) next.archived = Boolean(patch.archived);
+  if (patch.openingBalance != null) next.openingBalanceCents = toCents(patch.openingBalance);
+  if (patch.openingDate != null) {
+    const openingDate = assertDateOnly(patch.openingDate);
+    const transactions = await getAll(Stores.TRANSACTIONS);
+    const earliest = transactions
+      .filter(transaction => transaction.accountId === id || transaction.toAccountId === id)
+      .reduce((min, transaction) => !min || transaction.date < min ? transaction.date : min, null);
+    if (earliest && openingDate > earliest) throw new Error(`期初日期不能晚于最早流水 ${earliest}`);
+    next.openingDate = openingDate;
+  }
+  next.updatedAt = Date.now();
+  await put(Stores.ACCOUNTS, next);
+  return hydrateAccount(next);
+}
+
+export async function getAccountUsage(id) {
+  const transactions = await getAll(Stores.TRANSACTIONS);
+  return transactions.filter(transaction => transaction.accountId === id || transaction.toAccountId === id).length;
+}
+
+export async function archiveAccount(id) {
+  const usage = await getAccountUsage(id);
+  await updateAccount(id, { archived: true });
+  return usage;
+}
+
+export async function restoreAccount(id) {
+  return updateAccount(id, { archived: false });
 }
 
 export async function deleteAccount(id) {
-  // 默认为空后所有账户均为用户自建，均可删除
-  // 仍保留 builtin 字段以兼容历史数据
-  const acc = await get(Stores.ACCOUNTS, id);
-  if (acc && acc.builtin) throw new Error('内置账户不可删除');
-  return deleteRecord(Stores.ACCOUNTS, id);
+  const account = await get(Stores.ACCOUNTS, id);
+  if (!account) return;
+  const usage = await getAccountUsage(id);
+  if (usage > 0) throw new Error(`该账户关联 ${usage} 笔流水，请改为归档`);
+  await deleteRecord(Stores.ACCOUNTS, id);
 }
 
-// Build a Map<id, account> for quick lookup
-export async function getAccountsMap() {
-  const all = await listAccounts();
-  return new Map(all.map(a => [a.id, a]));
+export async function getAccountsMap({ includeArchived = true } = {}) {
+  const all = await listAccounts({ includeArchived });
+  return new Map(all.map(account => [account.id, account]));
+}
+
+export function hydrateAccount(record) {
+  return {
+    ...record,
+    archived: Boolean(record.archived),
+    openingBalance: fromCents(Number.isSafeInteger(record.openingBalanceCents) ? record.openingBalanceCents : toCents(record.openingBalance || 0)),
+    openingDate: record.openingDate || todayDateOnly()
+  };
+}
+
+function normalizeName(value) {
+  const name = String(value || '').trim();
+  if (!name) throw new Error('请输入账户名称');
+  if (name.length > 20) throw new Error('账户名称不能超过 20 个字符');
+  return name;
+}
+
+function normalizeColor(value) {
+  const color = String(value || '#007AFF');
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : '#007AFF';
+}
+
+async function assertUniqueName(name, excludeId = null) {
+  const normalized = name.toLocaleLowerCase('zh-CN');
+  const duplicate = (await getAll(Stores.ACCOUNTS)).find(account =>
+    account.id !== excludeId && String(account.name || '').trim().toLocaleLowerCase('zh-CN') === normalized
+  );
+  if (duplicate) throw new Error('账户名称已存在');
+}
+
+function createId(prefix) {
+  if (globalThis.crypto?.randomUUID) return `${prefix}_${globalThis.crypto.randomUUID()}`;
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }

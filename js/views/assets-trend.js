@@ -9,7 +9,7 @@ export async function renderAssetsTrend(mount) {
   let selected = null; // { seriesIdx, pointIdx }
 
   const topbar = el('header', { class: 'topbar' }, [
-    el('button', { class: 'back', onclick: () => location.hash = '#/accounts' }, [
+    el('button', { class: 'back', type: 'button', 'aria-label': '返回账户管理', onclick: () => location.hash = '#/accounts' }, [
       el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
     ]),
     el('h1', { text: '资产趋势' })
@@ -28,9 +28,9 @@ export async function renderAssetsTrend(mount) {
 
     // 年份导航
     const yearNav = el('div', { class: 'year-nav between items-center' }, [
-      el('button', { class: 'range-btn', onclick: () => { year--; selected = null; render(); }, text: '‹' }),
+      el('button', { class: 'range-btn', type: 'button', 'aria-label': '上一年', onclick: () => { year--; selected = null; render(); }, text: '‹' }),
       el('span', { class: 'range-label', text: year + '年' }),
-      el('button', { class: 'range-btn', onclick: () => { year++; selected = null; render(); }, text: '›' })
+      el('button', { class: 'range-btn', type: 'button', 'aria-label': '下一年', onclick: () => { year++; selected = null; render(); }, text: '›' })
     ]);
     content.appendChild(yearNav);
 
@@ -70,7 +70,7 @@ export async function renderAssetsTrend(mount) {
         ])
       ])
     ]);
-    const canvas = el('canvas', { style: 'width:100%;height:240px;' });
+    const canvas = el('canvas', { style: 'width:100%;height:240px;', role: 'img', tabindex: '0', 'aria-label': `${year}年净资产、总资产和总负债月度趋势` });
     chartCard.appendChild(canvas);
     content.appendChild(chartCard);
 

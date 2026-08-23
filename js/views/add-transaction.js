@@ -20,7 +20,7 @@ export async function renderAddTransaction(mount, params = {}) {
     }
   }
 
-  const allAccounts = await listAccounts();
+  const allAccounts = await listAccounts({ includeArchived: Boolean(editing) });
 
   // state
   const state = {
@@ -33,12 +33,13 @@ export async function renderAddTransaction(mount, params = {}) {
     toAccountId: editing ? editing.toAccountId : (allAccounts[1] ? allAccounts[1].id : null)
   };
 
-  const allCats = await listCategories();
+  const allCats = await listCategories(null, { includeArchived: Boolean(editing) });
   let cats = allCats.filter(c => c.type === state.type);
+  if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
 
   // === Build DOM ===
   // 返回按钮
-  const backBtn = el('button', { class: 'back add-back', onclick: () => location.hash = '#/' }, [
+  const backBtn = el('button', { class: 'back add-back', 'aria-label': '返回首页', onclick: () => location.hash = '#/' }, [
     el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
   ]);
 
@@ -91,12 +92,12 @@ export async function renderAddTransaction(mount, params = {}) {
       pageItems.forEach(c => {
         let item;
         if (c._isAdd) {
-          item = el('div', { class: 'cat-item', onclick: () => location.hash = '#/categories' }, [
+          item = el('button', { class: 'cat-item', type: 'button', onclick: () => location.hash = '#/categories' }, [
             el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text-3);border:2px dashed var(--fill-2);' }, [document.createTextNode('+')]),
             el('div', { class: 'cat-name', text: '管理' })
           ]);
         } else {
-          item = el('div', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), onclick: () => selectCat(c.id) }, [
+          item = el('button', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), type: 'button', onclick: () => selectCat(c.id) }, [
             el('div', { class: 'cat-icon', style: `background:${c.color}22;color:${c.color}` }, [document.createTextNode(c.icon)]),
             el('div', { class: 'cat-name', text: c.name })
           ]);
@@ -161,13 +162,13 @@ export async function renderAddTransaction(mount, params = {}) {
     catTrack.style.transition = 'none';
     e.preventDefault();
   });
-  window.addEventListener('mousemove', (e) => {
+  const onMouseMove = (e) => {
     if (!isDragging) return;
     dragDelta = e.clientX - mouseStartX;
     const carouselWidth = catCarousel.clientWidth || 320;
     catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth + dragDelta}px)`;
-  });
-  window.addEventListener('mouseup', () => {
+  };
+  const onMouseUp = () => {
     if (!isDragging) return;
     isDragging = false;
     catTrack.style.transition = 'transform .25s ease';
@@ -180,20 +181,22 @@ export async function renderAddTransaction(mount, params = {}) {
       currentPageIdx--;
     }
     updateTrackPosition();
-  });
+  };
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
 
   renderCats();
   const catCard = el('section', { class: 'card add-cat-card' }, [catCarousel, catDots]);
 
   // Transfer-specific fields (from / to account selectors)
-  const fromSelect = el('select', { class: 'input' });
+  const fromSelect = el('select', { class: 'input', id: 'add-from-account' });
   allAccounts.forEach(a => {
     fromSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
   });
   fromSelect.value = state.accountId;
   fromSelect.addEventListener('change', (e) => { state.accountId = e.target.value; });
 
-  const toSelect = el('select', { class: 'input' });
+  const toSelect = el('select', { class: 'input', id: 'add-to-account' });
   allAccounts.forEach(a => {
     toSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
   });
@@ -202,17 +205,17 @@ export async function renderAddTransaction(mount, params = {}) {
 
   const transferCard = el('section', { class: 'card add-transfer-card' }, [
     el('div', { class: 'field' }, [
-      el('label', { text: '从账户' }),
+      el('label', { for: 'add-from-account', text: '从账户' }),
       fromSelect
     ]),
     el('div', { class: 'field', style: 'margin-bottom:0;' }, [
-      el('label', { text: '到账户' }),
+      el('label', { for: 'add-to-account', text: '到账户' }),
       toSelect
     ])
   ]);
 
   // Account selector for expense/income (single account picker)
-  const accountSelect = el('select', { class: 'input' });
+  const accountSelect = el('select', { class: 'input', id: 'add-account' });
   allAccounts.forEach(a => {
     accountSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
   });
@@ -220,24 +223,24 @@ export async function renderAddTransaction(mount, params = {}) {
   accountSelect.addEventListener('change', (e) => { state.accountId = e.target.value; });
 
   const accountCell = el('div', { class: 'add-field' }, [
-    el('label', { text: '账户' }),
+    el('label', { for: 'add-account', text: '账户' }),
     allAccounts.length === 0
       ? el('button', { class: 'btn', style: 'padding:6px 8px;font-size:12px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
       : accountSelect
   ]);
 
   // Note + Date
-  const noteInput = el('input', { class: 'input', type: 'text', placeholder: '备注', value: state.note, maxlength: 50 });
+  const noteInput = el('input', { class: 'input', id: 'add-note', type: 'text', placeholder: '备注', value: state.note, maxlength: 50 });
   noteInput.addEventListener('input', (e) => { state.note = e.target.value; });
-  const dateInput = el('input', { class: 'input', type: 'date', value: state.date });
+  const dateInput = el('input', { class: 'input', id: 'add-date', type: 'date', value: state.date });
   dateInput.addEventListener('change', (e) => { state.date = e.target.value; });
 
   const noteCell = el('div', { class: 'add-field' }, [
-    el('label', { text: '备注' }),
+    el('label', { for: 'add-note', text: '备注' }),
     noteInput
   ]);
   const dateCell = el('div', { class: 'add-field' }, [
-    el('label', { text: '日期' }),
+    el('label', { for: 'add-date', text: '日期' }),
     dateInput
   ]);
 
@@ -270,6 +273,8 @@ export async function renderAddTransaction(mount, params = {}) {
   // 返回 cleanup：路由切换时恢复 tabbar
   return () => {
     document.body.classList.remove('route-add');
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
   };
 
   function applyTypeVisibility() {
@@ -296,6 +301,7 @@ export async function renderAddTransaction(mount, params = {}) {
     if (state.categoryId && !cats.find(c => c.id === state.categoryId)) {
       state.categoryId = null;
     }
+    if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
     renderCats();
     applyTypeVisibility();
   }
@@ -329,7 +335,7 @@ export async function renderAddTransaction(mount, params = {}) {
       toast('请输入金额');
       return;
     }
-    const amount = parseFloat(state.amount);
+    const amount = state.amount;
     if (isNaN(amount) || amount <= 0) {
       toast('金额无效');
       return;
@@ -370,7 +376,6 @@ export async function renderAddTransaction(mount, params = {}) {
         vibrate(15);
         setTimeout(() => { location.hash = '#/'; }, 250);
       } catch (e) {
-        console.error(e);
         toast('保存失败：' + (e.message || e));
       }
       return;
@@ -404,7 +409,6 @@ export async function renderAddTransaction(mount, params = {}) {
       vibrate(15);
       setTimeout(() => { location.hash = '#/'; }, 250);
     } catch (e) {
-      console.error(e);
       toast('保存失败：' + (e.message || e));
     }
   }

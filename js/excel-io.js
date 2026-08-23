@@ -1,12 +1,12 @@
 // js/excel-io.js — Excel(.xlsx) 导入导出，兼容其他记账软件格式
 // 列定义（按用户提供的格式）：
 //   记账日期 | 记账时间（可不填） | 分类（转账无需填写分类） | 记账类型 | 金额（勿填正负号、0） | 流出账户 | 流入账户 | 备注
-import { listAccounts, addAccount, updateAccount } from './accounts.js';
-import { listCategories, addCategory } from './categories.js';
-import { addTransaction, bulkPutTransactions, getAllTransactions } from './store.js';
-import { Stores } from './db.js';
-import { openDB } from './db.js';
+import { listAccounts } from './accounts.js';
+import { listCategories } from './categories.js';
+import { getAllTransactions, importExternalRows } from './store.js';
 import { todayStr } from './format.js';
+import { normalizeDateOnly } from './date-only.js';
+import { toCents } from './money.js';
 
 const HEADERS = [
   '记账日期',
@@ -40,31 +40,7 @@ function normalizeType(raw) {
 
 // 把日期字符串（支持 YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:mm / Excel 数字序列号）统一成 YYYY-MM-DD
 function normalizeDate(raw) {
-  if (raw == null || raw === '') return todayStr();
-  if (typeof raw === 'number') {
-    // Excel serial date: days since 1899-12-30
-    const d = new Date(Date.UTC(1899, 11, 30) + raw * 86400000);
-    return d.toISOString().slice(0, 10);
-  }
-  const s = String(raw).trim();
-  // already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // YYYY/MM/DD
-  if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)) {
-    const [y, m, d] = s.split(/[/\s]/);
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  }
-  // YYYY-MM-DD HH:mm
-  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) {
-    const [datePart] = s.split(/\s+/);
-    const [y, m, d] = datePart.split('-');
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  }
-  // Date 对象
-  if (raw instanceof Date) {
-    return raw.toISOString().slice(0, 10);
-  }
-  return todayStr();
+  return normalizeDateOnly(raw, { excelSerial: typeof raw === 'number' });
 }
 
 // 等待 SheetJS 全局加载完成（异步加载 vendor 脚本）
@@ -85,31 +61,13 @@ function ensureXLSX() {
   });
 }
 
-// 分类默认图标和颜色（按类型）
-const DEFAULT_CAT_ICON = { expense: '💰', income: '💼' };
-
-// 颜色调色板（与分类管理页保持一致）
-const COLOR_PALETTE = ['#007AFF','#34C759','#5856D6','#FF9500','#FF3B30','#FF2D55','#AF52DE','#5AC8FA','#FFCC00','#00C7BE'];
-const ACCOUNT_ICON_PALETTE = ['💵','💳','💙','💚','💛','🏦','📱','💰','📈','🏠','👛','💎'];
-
-// 从调色板中随机挑一个颜色，尽量避开已用过的颜色以保证视觉区分度
-function pickRandomColor(usedSet) {
-  const available = COLOR_PALETTE.filter(c => !usedSet || !usedSet.has(c));
-  const pool = available.length > 0 ? available : COLOR_PALETTE;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-function pickRandomIcon(icons) {
-  return icons[Math.floor(Math.random() * icons.length)];
-}
-
 // ===== 导出 =====
 export async function exportToExcel() {
   const XLSX = await ensureXLSX();
   const [txs, accounts, categories] = await Promise.all([
     getAllTransactions(),
-    listAccounts(),
-    listCategories()
+    listAccounts({ includeArchived: true }),
+    listCategories(null, { includeArchived: true })
   ]);
 
   const accMap = new Map(accounts.map(a => [a.id, a]));
@@ -120,8 +78,7 @@ export async function exportToExcel() {
     const cat = catMap.get(t.categoryId);
     const fromAcc = accMap.get(t.accountId);
     const toAcc = accMap.get(t.toAccountId);
-    const dateObj = new Date(t.date + 'T00:00:00');
-    const dateStr = dateObj.toISOString().slice(0, 10);
+    const dateStr = t.date;
     // 拆日期时间（如有 createdAt 则附上时间）
     const timeStr = t.createdAt ? new Date(t.createdAt).toTimeString().slice(0, 5) : '';
     return {
@@ -130,8 +87,8 @@ export async function exportToExcel() {
       [HEADERS[2]]: t.type === 'transfer' ? '' : (cat ? cat.name : ''),
       [HEADERS[3]]: typeLabel,
       [HEADERS[4]]: Number(t.amount.toFixed(2)),
-      [HEADERS[5]]: fromAcc ? fromAcc.name : '',
-      [HEADERS[6]]: toAcc ? toAcc.name : (t.type === 'transfer' ? '' : ''),
+      [HEADERS[5]]: t.type === 'income' ? '' : (fromAcc ? fromAcc.name : ''),
+      [HEADERS[6]]: t.type === 'income' ? (fromAcc ? fromAcc.name : '') : (toAcc ? toAcc.name : ''),
       [HEADERS[7]]: t.note || ''
     };
   });
@@ -151,13 +108,15 @@ export async function exportToExcel() {
     图标: a.icon,
     颜色: a.color,
     期初余额: a.openingBalance != null ? Number(a.openingBalance) : 0,
-    类型: a.builtin ? '内置' : '自定义'
+    账户类型: a.type === 'credit' ? '信用' : '资金',
+    期初日期: a.openingDate || '',
+    状态: a.archived ? '已归档' : '使用中'
   }));
   const wsAcc = XLSX.utils.json_to_sheet(accRows);
   XLSX.utils.book_append_sheet(wb, wsAcc, '账户');
 
   // 第三张表：分类列表
-  const catRows = categories.map(c => ({ 分类名称: c.name, 图标: c.icon, 颜色: c.color, 类型: c.type === 'income' ? '收入' : '支出' }));
+  const catRows = categories.map(c => ({ 分类名称: c.name, 图标: c.icon, 颜色: c.color, 类型: c.type === 'income' ? '收入' : '支出', 状态: c.archived ? '已归档' : '使用中' }));
   const wsCat = XLSX.utils.json_to_sheet(catRows);
   XLSX.utils.book_append_sheet(wb, wsCat, '分类');
 
@@ -195,8 +154,8 @@ export async function previewExcelImport(file) {
   }
 
   // 解析每一行，收集账户和分类
-  const existingAccounts = await listAccounts();
-  const existingCategories = await listCategories();
+  const existingAccounts = await listAccounts({ includeArchived: true });
+  const existingCategories = await listCategories(null, { includeArchived: true });
   // accName -> { name, exists, currentOpening }
   const detectedAccountsMap = new Map();
   for (const a of existingAccounts) detectedAccountsMap.set(a.name, { name: a.name, exists: true, currentOpening: a.openingBalance || 0, id: a.id });
@@ -229,19 +188,21 @@ export async function previewExcelImport(file) {
     }
 
     const type = normalizeType(rawType);
-    let amount = Number(String(rawAmount).replace(/[^\d.]/g, ''));
-    if (isNaN(amount) || amount <= 0) {
+    let amountCents;
+    try {
+      amountCents = toCents(String(rawAmount).replace(/[¥￥,\s]/g, ''), { allowNegative: false });
+    } catch {
       skipped++;
       continue;
     }
+    if (amountCents <= 0) { skipped++; continue; }
 
     let dateStr;
-    if (typeof rawDate === 'number') {
+    try {
       dateStr = normalizeDate(rawDate);
-    } else if (rawDate instanceof Date) {
-      dateStr = rawDate.toISOString().slice(0, 10);
-    } else {
-      dateStr = normalizeDate(rawDate);
+    } catch {
+      skipped++;
+      continue;
     }
 
     // 收集账户名（用于预览）
@@ -264,7 +225,7 @@ export async function previewExcelImport(file) {
 
     parsedRows.push({
       type,
-      amount,
+      amountCents,
       rawCat: type !== 'transfer' ? String(rawCat || '').trim() : '',
       rawFrom: fromName,
       rawTo: toName,
@@ -290,149 +251,17 @@ export async function previewExcelImport(file) {
 // Phase 2: 实际导入 - 接收 preview 返回的数据 + 用户输入的期初余额
 // openingBalances: Map<accountName, number>
 export async function importParsedData(preview, options = {}) {
-  const { mode = 'merge', openingBalances = new Map() } = options;
-
-  const existingAccounts = await listAccounts();
-  const existingCategories = await listCategories();
-  const accCache = new Map(existingAccounts.map(a => [a.name, a]));
-  const catMap = new Map(existingCategories.map(c => [c.id, c]));
-  const catNameMap = new Map();
-  for (const c of existingCategories) {
-    catNameMap.set(c.type + '|' + c.name, c);
-  }
-
-  // replace mode：清空 transactions
-  if (mode === 'replace') {
-    const db = await openDB();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(Stores.TRANSACTIONS, 'readwrite');
-      tx.objectStore(Stores.TRANSACTIONS).clear();
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  // 预创建所有新账户（含期初余额）和新分类，避免重复创建
-  // 收集所有已用颜色（按名称），便于新分配时避开重复
-  const usedColors = new Set();
-  for (const a of existingAccounts) usedColors.add(a.color);
-  for (const c of existingCategories) usedColors.add(c.color);
-
-  for (const accInfo of preview.detectedAccounts) {
-    if (!accCache.has(accInfo.name)) {
-      const ob = openingBalances.has(accInfo.name)
-        ? (parseFloat(openingBalances.get(accInfo.name)) || 0)
-        : 0;
-      const color = pickRandomColor(usedColors);
-      usedColors.add(color);
-      const acc = await addAccount({
-        name: accInfo.name,
-        icon: pickRandomIcon(ACCOUNT_ICON_PALETTE),
-        color: color,
-        openingBalance: ob
-      });
-      accCache.set(accInfo.name, acc);
-    } else {
-      // 已存在账户：若用户在导入时输入了期初余额，则更新
-      if (openingBalances.has(accInfo.name)) {
-        const existing = accCache.get(accInfo.name);
-        const newOb = parseFloat(openingBalances.get(accInfo.name)) || 0;
-        if (Number(existing.openingBalance) !== newOb) {
-          await updateAccount(existing.id, { openingBalance: newOb });
-          existing.openingBalance = newOb;
-        }
-      }
-    }
-  }
-
-  // 预创建所有新分类（随机分配颜色）
-  for (const catInfo of preview.detectedCategories) {
-    const key = catInfo.type + '|' + catInfo.name;
-    if (!catNameMap.has(key)) {
-      const color = pickRandomColor(usedColors);
-      usedColors.add(color);
-      const c = await addCategory({
-        name: catInfo.name,
-        type: catInfo.type,
-        icon: DEFAULT_CAT_ICON[catInfo.type] || '💰',
-        color: color
-      });
-      catMap.set(c.id, c);
-      catNameMap.set(key, c);
-    } else {
-      // 确保已在 catMap 中
-      const c = catNameMap.get(key);
-      if (!catMap.has(c.id)) catMap.set(c.id, c);
-    }
-  }
-
-  // 构建记录
-  const records = [];
-  let skippedInBuild = 0;
-  for (const p of preview.parsedRows) {
-    let accountId = null;
-    let toAccountId = null;
-    if (p.rawFrom) {
-      const acc = accCache.get(p.rawFrom);
-      if (acc) accountId = acc.id;
-    }
-    if (p.rawTo) {
-      const acc = accCache.get(p.rawTo);
-      if (acc) toAccountId = acc.id;
-    }
-    // 如果只填了流入账户没填流出账户，对收入来说流入=accountId
-    if (!accountId && toAccountId && p.type === 'income') {
-      accountId = toAccountId;
-      toAccountId = null;
-    }
-    // 默认账户兜底
-    if (!accountId) {
-      const firstAcc = accCache.values().next().value;
-      if (firstAcc) accountId = firstAcc.id;
-    }
-    if (!accountId) {
-      skippedInBuild++;
-      continue;
-    }
-
-    // 分类（仅支出/收入需要）
-    let categoryId = null;
-    if (p.type !== 'transfer' && p.rawCat) {
-      const key = p.type + '|' + p.rawCat;
-      const c = catNameMap.get(key);
-      if (c) categoryId = c.id;
-    }
-
-    const createdAt = p.time
-      ? new Date(p.date + 'T' + p.time.padStart(5, '0').padEnd(5, '0') + ':00').getTime() || Date.now()
-      : Date.now();
-
-    records.push({
-      type: p.type,
-      amount: p.amount,
-      categoryId,
-      accountId,
-      toAccountId: p.type === 'transfer' ? toAccountId : null,
-      note: p.note,
-      date: p.date,
-      createdAt,
-      updatedAt: Date.now()
-    });
-  }
-
-  if (records.length === 0) {
-    throw new Error('没有有效的数据行可导入（请检查格式）');
-  }
-
-  await bulkPutTransactions(records);
-
+  if (options.mode === 'replace') throw new Error('Excel 导入仅支持安全合并；如需替换请使用 JSON 备份恢复');
+  const result = await importExternalRows(preview.parsedRows, {
+    openingBalances: options.openingBalances || new Map()
+  });
   return {
     total: preview.totalRows,
-    imported: records.length,
-    skipped: preview.skipped + skippedInBuild,
+    imported: result.imported,
+    skipped: preview.skipped + result.skipped,
     sheetName: preview.sheetName,
-    newAccounts: preview.newAccountsCount,
-    newCategories: preview.newCategoriesCount
+    newAccounts: result.newAccounts,
+    newCategories: result.newCategories
   };
 }
 

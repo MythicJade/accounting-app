@@ -1,7 +1,8 @@
 // js/views/settings.js — settings: export/import/clear + about
-import { exportAll, importAll, clearAllData, countTransactions } from '../store.js';
+import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions } from '../store.js';
 import { exportToExcel, previewExcelImport, importParsedData } from '../excel-io.js';
-import { toast, confirmDialog, showModal, el } from '../ui.js';
+import { toast, confirmDialog, showModal, promptDialog, el } from '../ui.js';
+import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
 import { router } from '../router.js';
 import { APP_VERSION } from '../version.js';
 
@@ -10,7 +11,7 @@ export async function renderSettings(mount) {
 
   // Data group
   const dataGroup = el('div', { class: 'setting-list' }, [
-    el('div', { class: 'setting-item', onclick: () => location.hash = '#/budget' }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/budget' }, [
       el('div', { class: 'icon', text: '📊' }),
       el('div', { class: 'text' }, [
         el('div', { text: '预算管理' }),
@@ -18,7 +19,7 @@ export async function renderSettings(mount) {
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: () => location.hash = '#/accounts' }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/accounts' }, [
       el('div', { class: 'icon', text: '💳' }),
       el('div', { class: 'text' }, [
         el('div', { text: '账户管理' }),
@@ -26,7 +27,7 @@ export async function renderSettings(mount) {
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: () => location.hash = '#/categories' }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/categories' }, [
       el('div', { class: 'icon', text: '🏷️' }),
       el('div', { class: 'text' }, [
         el('div', { text: '分类管理' }),
@@ -34,15 +35,15 @@ export async function renderSettings(mount) {
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: onExport }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onExport }, [
       el('div', { class: 'icon', text: '📤' }),
       el('div', { class: 'text' }, [
         el('div', { text: '导出备份' }),
-        el('div', { class: 'text-sm text-3', text: '导出 JSON 文件到本地' })
+        el('div', { class: 'text-sm text-3', text: '可选密码加密，保存到本地' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: onImport }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onImport }, [
       el('div', { class: 'icon', text: '📥' }),
       el('div', { class: 'text' }, [
         el('div', { text: '导入备份' }),
@@ -54,23 +55,23 @@ export async function renderSettings(mount) {
 
   // Excel group
   const excelGroup = el('div', { class: 'setting-list mt-16' }, [
-    el('div', { class: 'setting-item', onclick: onExportExcel }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onExportExcel }, [
       el('div', { class: 'icon', text: '📊' }),
       el('div', { class: 'text' }, [
         el('div', { text: '导出 Excel' }),
-        el('div', { class: 'text-sm text-3', text: '导出 .xlsx 文件（含流水/账户/分类）' })
+        el('div', { class: 'text-sm text-3', text: '含流水/账户/分类，首次使用需联网' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: onImportExcel }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onImportExcel }, [
       el('div', { class: 'icon', text: '📑' }),
       el('div', { class: 'text' }, [
         el('div', { text: '导入 Excel' }),
-        el('div', { class: 'text-sm text-3', text: '从其他记账软件的 .xlsx 导入' })
+        el('div', { class: 'text-sm text-3', text: '从 .xlsx 安全合并，首次使用需联网' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: onShowExcelSpec }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onShowExcelSpec }, [
       el('div', { class: 'icon', text: 'ℹ️' }),
       el('div', { class: 'text' }, [
         el('div', { text: 'Excel 格式说明' }),
@@ -84,7 +85,7 @@ export async function renderSettings(mount) {
 
   // Danger group
   const dangerGroup = el('div', { class: 'setting-list mt-16' }, [
-    el('div', { class: 'setting-item danger', onclick: onClear }, [
+    el('button', { class: 'setting-item danger', type: 'button', onclick: onClear }, [
       el('div', { class: 'icon', text: '🗑️' }),
       el('div', { class: 'text', text: '清空所有数据' }),
       el('div', { class: 'arrow', text: '›' })
@@ -93,7 +94,7 @@ export async function renderSettings(mount) {
 
   // Help group
   const helpGroup = el('div', { class: 'setting-list mt-16' }, [
-    el('div', { class: 'setting-item', onclick: onShowInstallGuide }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onShowInstallGuide }, [
       el('div', { class: 'icon', text: '📱' }),
       el('div', { class: 'text' }, [
         el('div', { text: '安装到手机主屏' }),
@@ -101,7 +102,7 @@ export async function renderSettings(mount) {
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
-    el('div', { class: 'setting-item', onclick: onShowAbout }, [
+    el('button', { class: 'setting-item', type: 'button', onclick: onShowAbout }, [
       el('div', { class: 'icon', text: 'ℹ️' }),
       el('div', { class: 'text', text: '关于' }),
       el('div', { class: 'arrow', text: '›' })
@@ -111,7 +112,7 @@ export async function renderSettings(mount) {
   const about = el('div', { class: 'about-block' }, [
     el('div', { class: 'logo', text: '📒' }),
     el('div', { text: '我的记账 v' + APP_VERSION }),
-    el('div', { class: 'text-sm', text: '纯本地离线运行 · 数据不离开你的设备' })
+    el('div', { class: 'text-sm', text: '默认纯本地运行 · 备份可密码加密' })
   ]);
 
   mount.append(dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
@@ -126,14 +127,34 @@ export async function renderSettings(mount) {
     if (!file) return;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      const ok = await confirmDialog(
-        '将合并导入 ' + (data.transactions ? data.transactions.length : 0) + ' 条记录，是否继续？',
-        { okText: '导入' }
-      );
-      if (!ok) { fileInput.value = ''; return; }
-      await importAll(data, 'merge');
-      toast('已导入 ' + (data.transactions ? data.transactions.length : 0) + ' 条记录');
+      let data = JSON.parse(text);
+      if (isEncryptedBackup(data)) {
+        const password = await promptDialog({ title: '解密备份', label: '备份密码', inputType: 'password', placeholder: '至少 8 个字符', okText: '解密' });
+        if (!password) { fileInput.value = ''; return; }
+        data = await decryptBackup(data, password);
+      }
+      const preview = await previewBackupImport(data, 'merge');
+      const body = el('div', { style: 'font-size:14px;line-height:1.8;' }, [
+        el('p', { text: `流水 ${preview.transactions} 条 · 账户 ${preview.accounts} 个 · 分类 ${preview.categories} 个` }),
+        el('p', { class: 'text-2', text: `检测到可能重复 ${preview.duplicateCount} 条；安全合并会自动跳过。` }),
+        el('p', { class: 'text-sm text-3', text: '完全替换会先清空当前数据，并在同一事务中恢复；失败会自动回滚。' })
+      ]);
+      const mode = await showModal({
+        title: '备份导入预检',
+        body,
+        actions: [
+          { label: '取消', type: 'ghost', value: null },
+          { label: '安全合并', type: 'primary', value: 'merge' },
+          { label: '完全替换', type: 'danger', value: 'replace' }
+        ]
+      });
+      if (!mode) { fileInput.value = ''; return; }
+      if (mode === 'replace') {
+        const confirmed = await confirmDialog('完全替换当前全部账目？事务失败时会自动回滚。', { danger: true, okText: '确认替换' });
+        if (!confirmed) { fileInput.value = ''; return; }
+      }
+      const result = await importAll(data, mode);
+      toast(`已导入 ${result.imported} 条，跳过重复 ${result.skippedDuplicates} 条`);
       router.dispatch();
     } catch (err) {
       console.error(err);
@@ -202,7 +223,7 @@ export async function renderSettings(mount) {
     if (preview.detectedAccounts.length > 0) {
       form.appendChild(el('div', { style: 'margin:14px 0 6px;font-weight:600;' }, [el('span', { text: '💳 检测到的账户' })]));
       form.appendChild(el('div', { style: 'color:var(--text-3);font-size:12px;margin-bottom:6px;' }, [
-        el('span', { text: '可输入各账户当前余额（期初余额），导入后作为账户初始余额。已存在账户保留原值。' })
+          el('span', { text: '可输入首笔导入流水发生前的账户余额。已存在账户保留原值；导入更早流水时会自动前移期初日期。' })
       ]));
       preview.detectedAccounts.forEach((acc) => {
         const cur = acc.currentOpening != null ? Number(acc.currentOpening) : 0;
@@ -211,7 +232,7 @@ export async function renderSettings(mount) {
           el('div', { text: acc.name + (acc.exists ? '' : ' (新建)') }),
           el('div', { class: 'text-sm text-3', text: acc.exists ? '已存在账户' : '将自动创建' })
         ]);
-        const input = el('input', { type: 'number', step: '0.01', placeholder: '0.00', value: cur !== 0 ? String(cur) : '', style: 'width:110px;text-align:right;' });
+        const input = el('input', { type: 'number', step: '0.01', 'aria-label': `${acc.name}期初余额`, placeholder: '0.00', value: cur !== 0 ? String(cur) : '', style: 'width:110px;text-align:right;' });
         input.className = 'input';
         balInputs.push({ name: acc.name, input });
         row.append(label, input);
@@ -314,23 +335,46 @@ export async function renderSettings(mount) {
   async function onExport() {
     try {
       const data = await exportAll();
-      const json = JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const choice = await showModal({
+        title: '导出备份',
+        body: el('p', { class: 'text-sm text-2', text: '加密备份需要密码才能恢复，适合保存到网盘或传输。' }),
+        actions: [
+          { label: '取消', type: 'ghost', value: null },
+          { label: '普通 JSON', type: 'ghost', value: 'plain' },
+          { label: '密码加密', type: 'primary', value: 'encrypted' }
+        ]
+      });
+      if (!choice) return;
+      let payload = data;
+      let suffix = '';
+      if (choice === 'encrypted') {
+        const password = await promptDialog({ title: '设置备份密码', label: '密码（至少 8 个字符）', inputType: 'password', okText: '继续' });
+        if (!password) return;
+        const confirmation = await promptDialog({ title: '确认备份密码', label: '再次输入密码', inputType: 'password', okText: '加密导出' });
+        if (password !== confirmation) throw new Error('两次输入的密码不一致');
+        payload = await encryptBackup(data, password);
+        suffix = '-encrypted';
+      }
       const d = new Date();
       const ts = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-      a.href = url;
-      a.download = 'accounting-backup-' + ts + '.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadJson(payload, 'accounting-backup-' + ts + suffix + '.json');
       toast('已导出 ' + data.transactions.length + ' 条记录');
     } catch (e) {
       console.error(e);
       toast('导出失败：' + (e.message || e));
     }
+  }
+
+  function downloadJson(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function onImport() {
@@ -354,16 +398,14 @@ export async function renderSettings(mount) {
   async function onShowInstallGuide() {
     const body = el('div', { style: 'font-size:14px;line-height:1.7;color:var(--text);' });
     body.innerHTML = `
-      <p style="margin-bottom:8px;"><b>方法一：电脑同一 WiFi 共享</b></p>
+      <p style="margin-bottom:8px;"><b>本机预览</b></p>
       <ol style="padding-left:18px;margin-bottom:14px;color:var(--text-2);">
-        <li>电脑上启动：<code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">cd accounting-app && python3 -m http.server 8080</code></li>
-        <li>查电脑 IP：终端执行 <code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">ip addr | grep inet</code></li>
-        <li>手机和电脑连同一 WiFi，浏览器访问 <code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">http://电脑IP:8080</code></li>
-        <li>Chrome 菜单（⋮）→「添加到主屏幕」</li>
+        <li>电脑上启动：<code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">python -m http.server 8080</code></li>
+        <li>电脑浏览器访问 <code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">http://localhost:8080</code></li>
       </ol>
-      <p style="margin-bottom:8px;"><b>方法二：部署到静态托管</b></p>
-      <p style="color:var(--text-2);">把整个 accounting-app 目录上传到 GitHub Pages / Netlify / Vercel 等免费静态托管，手机访问该网址后同样「添加到主屏幕」。</p>
-      <p style="margin-top:14px;color:var(--text-3);font-size:12px;">注：iOS Safari 也支持「添加到主屏幕」，但部分 PWA 特性有限制。</p>
+      <p style="margin-bottom:8px;"><b>安装到手机</b></p>
+      <p style="color:var(--text-2);">请部署到支持 HTTPS 的静态托管，手机访问后在浏览器菜单中选择「添加到主屏幕」。iPhone 使用 Safari 的分享菜单，Android 使用 Chrome 菜单。</p>
+      <p style="margin-top:14px;color:var(--text-3);font-size:12px;">普通局域网 HTTP 地址不满足 Service Worker 的安全要求，不能保证离线安装。</p>
     `;
     await import('../ui.js').then(m => m.showModal({ title: '📱 安装到手机主屏', body, actions: [{ label: '知道了', type: 'primary' }] }));
   }
@@ -374,7 +416,7 @@ export async function renderSettings(mount) {
       <div style="font-size:48px;margin-bottom:8px;">📒</div>
       <p style="font-weight:600;margin-bottom:4px;">我的记账 v${APP_VERSION}</p>
       <p style="color:var(--text-2);margin-bottom:12px;">个人离线记账 PWA 应用</p>
-      <p style="color:var(--text-3);font-size:12px;">数据使用 IndexedDB 完全本地存储<br>不联网 · 不上传 · 隐私无忧</p>
+      <p style="color:var(--text-3);font-size:12px;">账目使用 IndexedDB 存储在本机<br>应用更新会联网检查静态文件，账目不会自动上传</p>
     `;
     await import('../ui.js').then(m => m.showModal({ title: '关于', body, actions: [{ label: '关闭', type: 'primary' }] }));
   }

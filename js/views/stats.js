@@ -1,5 +1,5 @@
 // js/views/stats.js — statistics page with charts
-import { listTransactions, categoryBreakdown, dailyTotals, sumByType } from '../store.js';
+import { categoryBreakdown, dailyTotals, sumByType } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
 import { getRange, shiftRange, rangeLabel, listDates, formatMoney, formatDateStr, monthKeyToLabel, getCustomRange, todayStr } from '../format.js';
@@ -68,9 +68,9 @@ export async function renderStats(mount) {
   // Range nav (hidden in custom mode)
   const rangeLabelEl = el('span', { class: 'label', text: rangeLabel(_state.range, _state.period) });
   const rangeNav = el('div', { class: 'range-nav' }, [
-    el('button', { html: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>', onclick: () => { _state.range = shiftRange(_state.range, _state.period, -1); _state.selectedSlice = null; _state.selectedPoint = null; render(); } }),
+    el('button', { type: 'button', 'aria-label': '上一时段', html: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>', onclick: () => { _state.range = shiftRange(_state.range, _state.period, -1); _state.selectedSlice = null; _state.selectedPoint = null; render(); } }),
     rangeLabelEl,
-    el('button', { html: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>', onclick: () => { _state.range = shiftRange(_state.range, _state.period, 1); _state.selectedSlice = null; _state.selectedPoint = null; render(); } })
+    el('button', { type: 'button', 'aria-label': '下一时段', html: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>', onclick: () => { _state.range = shiftRange(_state.range, _state.period, 1); _state.selectedSlice = null; _state.selectedPoint = null; render(); } })
   ]);
 
   // Custom date range panel (hidden by default)
@@ -177,7 +177,7 @@ export async function renderStats(mount) {
   summaryRow.append(summaryIncome, summaryExpense);
 
   // Charts
-  const pieCanvas = el('canvas');
+  const pieCanvas = el('canvas', { role: 'img', tabindex: '0', 'aria-label': '分类占比图表，具体数值见下方分类排行' });
   pieCanvas.style.height = '260px';
   const pieHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '点击扇区查看详情' });
   const pieCard = el('section', { class: 'card chart-card' }, [
@@ -186,7 +186,7 @@ export async function renderStats(mount) {
     pieHint
   ]);
 
-  const lineCanvas = el('canvas');
+  const lineCanvas = el('canvas', { role: 'img', tabindex: '0', 'aria-label': '收支趋势图表' });
   lineCanvas.style.height = '220px';
   const lineHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '点击折线查看具体金额' });
   const lineCard = el('section', { class: 'card chart-card' }, [
@@ -237,7 +237,7 @@ export async function renderStats(mount) {
 
     // pie data
     const catMap = await categoryBreakdown(range.start, range.end, _state.view, accId);
-    const allCats = await listCategories();
+    const allCats = await listCategories(null, { includeArchived: true });
     const catById = new Map(allCats.map(c => [c.id, c]));
     let pieData = [];
     catMap.forEach((val, id) => {

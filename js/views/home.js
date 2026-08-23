@@ -1,16 +1,16 @@
 // js/views/home.js — home view: monthly summary + recent transactions
-import { listTransactions, monthlySummary, getBudget } from '../store.js';
+import { listTransactions, monthlySummary, getBudget, setupStarterData } from '../store.js';
 import { listCategories } from '../categories.js';
-import { getAccountsMap } from '../accounts.js';
+import { getAccountsMap, listAccounts } from '../accounts.js';
 import { formatMoney, dateWithWeekday, currentMonthKey, monthKeyToLabel } from '../format.js';
-import { el } from '../ui.js';
+import { el, toast } from '../ui.js';
 import { router } from '../router.js';
 
 let _categoriesCache = null;
 
 async function getCategoriesMap() {
   if (!_categoriesCache) {
-    _categoriesCache = await listCategories();
+    _categoriesCache = await listCategories(null, { includeArchived: true });
   }
   const map = new Map();
   _categoriesCache.forEach(c => map.set(c.id, c));
@@ -22,8 +22,12 @@ export async function renderHome(mount) {
   const summary = await monthlySummary(monthKey, null);
   const budget = await getBudget(monthKey);
   const recent = await listTransactions({ limit: 30 });
-  const catMap = await getCategoriesMap();
-  const accMap = await getAccountsMap();
+  const [catMap, accMap, activeAccounts, activeCategories] = await Promise.all([
+    getCategoriesMap(),
+    getAccountsMap(),
+    listAccounts(),
+    listCategories()
+  ]);
 
   // Invalidate cache when returning to home
   _categoriesCache = null;
@@ -35,6 +39,32 @@ export async function renderHome(mount) {
   const progressClass = pct >= 100 ? 'danger' : pct >= 80 ? 'warn' : '';
 
   const nodes = [];
+
+  if (!activeAccounts.length || !activeCategories.length) {
+    const setupButton = el('button', { class: 'btn', type: 'button', text: '一键初始化' });
+    setupButton.addEventListener('click', async () => {
+      setupButton.disabled = true;
+      try {
+        await setupStarterData();
+        toast('基础账户和分类已准备好');
+        router.dispatch();
+      } catch (error) {
+        toast('初始化失败：' + (error.message || error));
+        setupButton.disabled = false;
+      }
+    });
+    nodes.push(el('section', { class: 'card onboarding-card' }, [
+      el('div', { class: 'onboarding-icon', 'aria-hidden': 'true', text: '👋' }),
+      el('div', { class: 'onboarding-copy' }, [
+        el('h2', { text: '先把账本准备好' }),
+        el('p', { text: '创建现金、银行卡和常用收支分类，之后都可以修改或归档。' }),
+        el('div', { class: 'onboarding-actions' }, [
+          setupButton,
+          el('a', { class: 'btn btn-ghost', href: '#/accounts', text: '自己设置' })
+        ])
+      ])
+    ]));
+  }
 
   // 左滑进入账户管理提示（仅首次显示）
   if (!localStorage.getItem('swipe_hint_shown')) {
@@ -93,7 +123,7 @@ export async function renderHome(mount) {
   const recentCard = el('section', { class: 'tx-section' });
   const header = el('div', { class: 'card-title', style: 'padding:0 4px;' }, [
     el('span', { text: '最近流水' }),
-    recent.length > 0 ? el('a', { class: 'text-sm', href: '#/stats', text: '查看统计' }) : null
+    recent.length > 0 ? el('a', { class: 'text-sm', href: '#/transactions', text: '查看全部' }) : null
   ]);
   recentCard.appendChild(header);
 
@@ -156,7 +186,7 @@ export async function renderHome(mount) {
           amountClass = t.type;
         }
         // 两列布局：左 = 图标 + 分类名（垂直居中）；右 = 金额（上） + 账户名（下）
-        const item = el('div', { class: 'tx-item', dataset: { id: t.id } }, [
+        const item = el('button', { class: 'tx-item tx-item-button', type: 'button', dataset: { id: t.id }, 'aria-label': `编辑 ${nameText} ${amountText}` }, [
           el('div', { class: 'tx-left' }, [
             iconNode,
             el('span', { class: 'name', text: nameText })

@@ -19,14 +19,22 @@ export function toast(msg, type = 'info', duration = 2000) {
 export function showModal({ title, body, actions }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
+    const previousFocus = document.activeElement;
     const mask = document.createElement('div');
     mask.className = 'modal-mask';
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.tabIndex = -1;
     if (title) {
       const h = document.createElement('h3');
+      h.id = `modal-title-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       h.textContent = title;
+      modal.setAttribute('aria-labelledby', h.id);
       modal.appendChild(h);
+    } else {
+      modal.setAttribute('aria-label', '对话框');
     }
     const bodyEl = document.createElement('div');
     if (typeof body === 'string') bodyEl.innerHTML = body;
@@ -38,6 +46,7 @@ export function showModal({ title, body, actions }) {
     const acts = actions || [{ label: '确定', type: 'primary' }];
     acts.forEach(act => {
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'btn ' + (act.type === 'danger' ? 'btn-danger' : act.type === 'ghost' ? 'btn-ghost' : '');
       btn.textContent = act.label;
       btn.onclick = () => {
@@ -53,12 +62,44 @@ export function showModal({ title, body, actions }) {
     modal.appendChild(actionsEl);
     mask.appendChild(modal);
     mask.addEventListener('click', (e) => { if (e.target === mask) close(null); });
+    mask.addEventListener('keydown', onKeyDown);
     root.appendChild(mask);
+    requestAnimationFrame(() => {
+      const preferred = modal.querySelector('input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])');
+      (preferred || modal).focus();
+    });
+
+    function onKeyDown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')];
+      if (!focusable.length) {
+        event.preventDefault();
+        modal.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
 
     function close(result) {
+      if (!mask.parentNode) return;
+      mask.removeEventListener('keydown', onKeyDown);
       mask.style.opacity = '0';
       setTimeout(() => {
         if (mask.parentNode) mask.parentNode.removeChild(mask);
+        if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
       }, 200);
       resolve(result);
     }
@@ -82,6 +123,7 @@ export function promptDialog({ title = '输入', label = '', defaultValue = '', 
   input.type = inputType;
   input.value = defaultValue;
   input.placeholder = placeholder;
+  input.id = `prompt-input-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   let bodyEl = input;
   if (label) {
@@ -89,6 +131,7 @@ export function promptDialog({ title = '输入', label = '', defaultValue = '', 
     lab.className = 'field';
     lab.style.display = 'block';
     lab.textContent = label;
+    lab.htmlFor = input.id;
     const wrap = document.createElement('div');
     wrap.appendChild(lab);
     wrap.appendChild(input);
@@ -142,6 +185,7 @@ export function el(tag, props = {}, children = []) {
     ? document.createElementNS(SVG_NS, tag)
     : document.createElement(tag);
   for (const k in props) {
+    if (props[k] == null || props[k] === false) continue;
     if (k === 'class') {
       if (isSVG) node.setAttribute('class', props[k]);
       else node.className = props[k];
@@ -155,7 +199,7 @@ export function el(tag, props = {}, children = []) {
     } else if (k === 'attrs') {
       for (const a in props[k]) node.setAttribute(a, props[k][a]);
     } else {
-      node.setAttribute(k, props[k]);
+      node.setAttribute(k, props[k] === true ? '' : props[k]);
     }
   }
   const kids = Array.isArray(children) ? children : [children];

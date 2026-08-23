@@ -1,5 +1,5 @@
 // js/views/accounts.js — accounts management page (重构布局：净资产汇总 + 资金/信用分区)
-import { listAccounts, addAccount, updateAccount, deleteAccount } from '../accounts.js';
+import { listAccounts, addAccount, updateAccount, deleteAccount, archiveAccount, restoreAccount } from '../accounts.js';
 import { getAllAccountBalances, getAssetsSummary, transferMoney } from '../store.js';
 import { formatMoney, todayStr } from '../format.js';
 import { toast, confirmDialog, showModal, el } from '../ui.js';
@@ -7,13 +7,13 @@ import { router } from '../router.js';
 
 export async function renderAccounts(mount) {
   const [accounts, balances, summary] = await Promise.all([
-    listAccounts(),
+    listAccounts({ includeArchived: true }),
     getAllAccountBalances(),
     getAssetsSummary()
   ]);
 
   const topbar = el('header', { class: 'topbar' }, [
-    el('button', { class: 'back', onclick: () => location.hash = '#/' }, [
+    el('button', { class: 'back', type: 'button', 'aria-label': '返回首页', onclick: () => location.hash = '#/' }, [
       el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
     ]),
     el('h1', { text: '账户管理' }),
@@ -23,7 +23,7 @@ export async function renderAccounts(mount) {
   // === 顶部净资产汇总 + 右侧两个入口框 ===
   const summaryArea = el('div', { class: 'accounts-summary-area' }, [
     // 左：净资产渐变卡
-    el('div', { class: 'card summary-card account-summary-card', onclick: () => {} }, [
+    el('div', { class: 'card summary-card account-summary-card' }, [
       el('div', { class: 'summary-month', text: '净资产合计' }),
       el('div', { class: 'summary-balance' }, [
         el('div', { class: 'summary-amount', text: formatMoney(summary.netAssets) })
@@ -41,11 +41,11 @@ export async function renderAccounts(mount) {
     ]),
     // 右：两个小入口框
     el('div', { class: 'accounts-entry-boxes' }, [
-      el('div', { class: 'entry-box', onclick: () => location.hash = '#/assets' }, [
+      el('button', { class: 'entry-box', type: 'button', onclick: () => location.hash = '#/assets' }, [
         el('div', { class: 'entry-icon', text: '📈' }),
         el('div', { class: 'entry-label', text: '资产趋势' })
       ]),
-      el('div', { class: 'entry-box', onclick: () => showAccountForm(null) }, [
+      el('button', { class: 'entry-box', type: 'button', onclick: () => showAccountForm(null) }, [
         el('div', { class: 'entry-icon', text: '➕' }),
         el('div', { class: 'entry-label', text: '增加账户' })
       ])
@@ -53,8 +53,9 @@ export async function renderAccounts(mount) {
   ]);
 
   // === 下方账户分区（资金/信用 上下纵向排列）===
-  const assetAccounts = accounts.filter(a => a.type !== 'credit');
-  const creditAccounts = accounts.filter(a => a.type === 'credit');
+  const assetAccounts = accounts.filter(a => !a.archived && a.type !== 'credit');
+  const creditAccounts = accounts.filter(a => !a.archived && a.type === 'credit');
+  const archivedAccounts = accounts.filter(a => a.archived);
 
   const listsArea = el('div', { class: 'account-lists' });
 
@@ -62,6 +63,10 @@ export async function renderAccounts(mount) {
   listsArea.appendChild(buildSection('💰 资金', summary.byType.asset || 0, assetAccounts, balances));
   // 信用分区
   listsArea.appendChild(buildSection('💳 信用', summary.byType.credit || 0, creditAccounts, balances));
+  if (archivedAccounts.length) {
+    const archivedSubtotal = archivedAccounts.reduce((sum, account) => sum + (balances.get(account.id) || 0), 0);
+    listsArea.appendChild(buildSection('📦 已归档', archivedSubtotal, archivedAccounts, balances));
+  }
 
   // 转账按钮
   const transferBtn = el('button', {
@@ -81,8 +86,9 @@ export async function renderAccounts(mount) {
       accs.forEach(acc => {
         const bal = balances.get(acc.id) || 0;
         const balClass = bal < 0 ? 'expense' : '';
-        const card = el('div', {
+        const card = el('button', {
           class: 'account-mini-card' + (acc.type === 'credit' ? ' credit' : ''),
+          type: 'button',
           onclick: () => location.hash = '#/accounts/' + acc.id
         }, [
           el('div', { class: 'mini-icon', style: `background:${acc.color}22;color:${acc.color}` }, [document.createTextNode(acc.icon)]),
@@ -106,8 +112,9 @@ export async function renderAccounts(mount) {
     const isEdit = !!acc;
     const form = el('div', { style: 'font-size:14px;' });
 
-    const nameInput = el('input', { class: 'input', type: 'text', placeholder: '账户名称', value: acc ? acc.name : '', maxlength: 12 });
-    const openingInput = el('input', { class: 'input', type: 'number', placeholder: '0.00', step: '0.01', value: (acc && acc.openingBalance != null) ? acc.openingBalance : '' });
+    const nameInput = el('input', { class: 'input', type: 'text', 'aria-label': '账户名称', placeholder: '账户名称', value: acc ? acc.name : '', maxlength: 12 });
+    const openingInput = el('input', { class: 'input', type: 'number', 'aria-label': '期初余额', placeholder: '0.00', step: '0.01', value: (acc && acc.openingBalance != null) ? acc.openingBalance : '' });
+    const openingDateInput = el('input', { class: 'input', type: 'date', 'aria-label': '期初日期', value: acc?.openingDate || todayStr() });
 
     // 账户类型选择（资金/信用）
     let selectedType = acc ? (acc.type === 'credit' ? 'credit' : 'asset') : 'asset';
@@ -129,7 +136,7 @@ export async function renderAccounts(mount) {
     function renderIcons() {
       iconGrid.innerHTML = '';
       icons.forEach(ic => {
-        const item = el('div', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), onclick: () => { selectedIcon = ic; renderIcons(); } }, [
+        const item = el('button', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), type: 'button', 'aria-label': `选择图标 ${ic}`, onclick: () => { selectedIcon = ic; renderIcons(); } }, [
           el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [document.createTextNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
@@ -142,7 +149,7 @@ export async function renderAccounts(mount) {
     function renderColors() {
       colorRow.innerHTML = '';
       colors.forEach(c => {
-        const sw = el('div', { style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
+        const sw = el('button', { type: 'button', 'aria-label': `选择颜色 ${c}`, style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
         colorRow.appendChild(sw);
       });
     }
@@ -155,6 +162,8 @@ export async function renderAccounts(mount) {
       typeToggle,
       el('label', { class: 'text-sm text-2', style: 'display:block;margin:12px 0 4px;', text: '期初余额（创建账户时的初始金额，可填负数表示欠款）' }),
       openingInput,
+      el('label', { class: 'text-sm text-2', style: 'display:block;margin:12px 0 4px;', text: '期初日期（余额从该日期起计入）' }),
+      openingDateInput,
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择图标' }),
       iconGrid,
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择颜色' }),
@@ -166,7 +175,8 @@ export async function renderAccounts(mount) {
       body: form,
       actions: [
         { label: '取消', type: 'ghost', value: 'cancel' },
-        ...(isEdit ? [{ label: '删除', type: 'danger', value: 'delete' }] : []),
+        ...(isEdit ? [{ label: acc.archived ? '恢复' : '归档', type: 'ghost', value: acc.archived ? 'restore' : 'archive' }] : []),
+        ...(isEdit ? [{ label: '永久删除', type: 'danger', value: 'delete' }] : []),
         { label: '保存', type: 'primary', value: 'save', onClick: () => {
           if (!nameInput.value.trim()) { toast('请输入账户名称'); return false; }
         } }
@@ -180,7 +190,8 @@ export async function renderAccounts(mount) {
         icon: selectedIcon,
         color: selectedColor,
         type: selectedType,
-        openingBalance: openingBal
+        openingBalance: openingBal,
+        openingDate: openingDateInput.value
       };
       try {
         if (isEdit) {
@@ -194,8 +205,16 @@ export async function renderAccounts(mount) {
       } catch (e) {
         toast('保存失败：' + (e.message || e));
       }
+    } else if (result === 'archive') {
+      await archiveAccount(acc.id);
+      toast('账户已归档，历史流水仍保留');
+      router.dispatch();
+    } else if (result === 'restore') {
+      await restoreAccount(acc.id);
+      toast('账户已恢复');
+      router.dispatch();
     } else if (result === 'delete') {
-      const ok = await confirmDialog('确定要删除此账户吗？关联的流水记录仍保留但会显示为未分类。', { danger: true, okText: '删除' });
+      const ok = await confirmDialog('只有未关联流水的账户才能永久删除。确定继续吗？', { danger: true, okText: '永久删除' });
       if (ok) {
         try {
           await deleteAccount(acc.id);

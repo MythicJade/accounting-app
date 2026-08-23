@@ -80,6 +80,8 @@ body { overscroll-behavior-y: contain; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 input, select, textarea { font: inherit; color: inherit; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+:focus-visible { outline: 3px solid rgba(0, 122, 255, .45); outline-offset: 2px; }
 
 /* ===== Layout ===== */
 #app {
@@ -581,6 +583,7 @@ body.route-add .view {
 .setting-item {
   display: flex; align-items: center; gap: 12px; padding: 14px 16px;
   border-bottom: 1px solid var(--border); cursor: pointer;
+  width: 100%; text-align: left; background: var(--card);
 }
 .setting-item:last-child { border-bottom: none; }
 .setting-item:active { background: var(--bg); }
@@ -606,6 +609,7 @@ body.route-add .view {
 .account-type-section .section-subtotal { font-size: 13px; font-variant-numeric: tabular-nums; }
 .account-section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .account-mini-card { background: var(--bg); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.account-mini-card { width: 100%; }
 .account-mini-card:active { transform: scale(0.97); }
 .account-mini-card.credit { border: 1px solid var(--c-error-surface); }
 .account-mini-card .mini-icon { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
@@ -652,3 +656,42 @@ body.route-add .view {
 .swipe-hint { position: fixed; top: 50%; left: 12px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 12px; z-index: 100; animation: swipe-hint-pulse 1.5s ease-in-out infinite; transition: opacity 0.5s; }
 .swipe-hint.fade-out { opacity: 0; }
 @keyframes swipe-hint-pulse { 0%, 100% { transform: translateY(-50%) translateX(0); } 50% { transform: translateY(-50%) translateX(4px); } }
+
+/* ===== Onboarding & full transaction history ===== */
+.onboarding-card { display: flex; gap: 14px; align-items: flex-start; border: 1px solid rgba(0, 122, 255, .16); }
+.onboarding-icon { font-size: 30px; line-height: 1; }
+.onboarding-copy { flex: 1; min-width: 0; }
+.onboarding-copy h2 { font-size: 17px; margin-bottom: 4px; }
+.onboarding-copy p { color: var(--text-2); font-size: 13px; }
+.onboarding-actions { display: flex; gap: 8px; margin-top: 12px; }
+.onboarding-actions .btn { padding: 8px 14px; font-size: 13px; }
+
+.transaction-filters { display: grid; gap: 10px; }
+.filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.transaction-reset { justify-self: end; padding: 7px 14px; }
+.transaction-result-summary { color: var(--text-2); font-size: 12px; padding: 0 4px 8px; }
+.transaction-pager { display: flex; justify-content: center; gap: 10px; padding: 16px 0 4px; }
+.transaction-pager .btn { min-width: 96px; }
+.tx-item-button { width: 100%; text-align: left; }
+.tx-copy { min-width: 0; display: flex; flex-direction: column; }
+.tx-note { color: var(--text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-item-button { width: 100%; text-align: left; background: transparent; }
+
+.startup-error { padding: 32px 16px; text-align: center; color: var(--transfer); }
+.startup-error-icon { font-size: 48px; margin-bottom: 8px; }
+.startup-error h2 { margin: 8px 0; }
+.startup-error .btn { margin: 16px 0; }
+
+@media (max-width: 360px) {
+  .filter-row { grid-template-columns: 1fr; }
+  .onboarding-card { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
