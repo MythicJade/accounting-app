@@ -1,9 +1,9 @@
 // js/views/categories.js — 分类管理页面（支出/收入分类 CRUD + 图标颜色）
 import { listCategories, addCategory, updateCategory, deleteCategory, archiveCategory, restoreCategory } from '../categories.js';
 import { toast, confirmDialog, showModal, el } from '../ui.js';
+import { CATEGORY_ICON_OPTIONS, categoryIconNode, resolveCategoryIconKey } from '../category-icons.js';
 
-const ICONS = ['🍱','🍜','🚇','🚗','🛒','🏠','🎮','💊','📚','💰','💼','🎁','📈','➕','🎂','👕','💊','✈️','🎬','☕','🍷','🛍️','💡','💵','💳','💙','💚','💛','🏦','📱','💎','👛'];
-const COLORS = ['#007AFF','#34C759','#5856D6','#FF9500','#FF3B30','#FF2D55','#AF52DE','#5AC8FA','#FFCC00','#00C7BE'];
+const COLORS = ['#F36F62','#C77C86','#A56C8E','#5BC0D0','#26B982','#15A6A1','#93BF38','#FFC62E','#F39B35','#6677E8'];
 
 export async function renderCategories(mount) {
   let currentType = 'expense';
@@ -44,7 +44,7 @@ export async function renderCategories(mount) {
     }
     cats.forEach(c => {
       const item = el('button', { class: 'cat-item', onclick: () => onEdit(c), 'aria-label': `${c.name}，${c.archived ? '已归档' : '编辑分类'}` }, [
-        el('div', { class: 'cat-icon', style: `background:${c.color}22;color:${c.color}` }, [document.createTextNode(c.icon)]),
+        el('div', { class: 'cat-icon category-line-icon', style: `background:${c.color}18;color:${c.color}` }, [categoryIconNode(c, { size: 23 })]),
         el('div', { class: 'cat-name', text: c.name })
       ]);
       grid.appendChild(item);
@@ -79,9 +79,9 @@ export async function renderCategories(mount) {
 
   async function showCategoryForm(cat) {
     const isEdit = !!cat;
-    const form = el('div', { style: 'font-size:14px;' });
+    const form = el('div', { class: 'category-form' });
 
-    const nameInput = el('input', { class: 'input', type: 'text', 'aria-label': '分类名称', placeholder: '分类名称', value: cat ? cat.name : '', maxlength: 8 });
+    const nameInput = el('input', { class: 'category-name-input', type: 'text', 'aria-label': '分类名称', placeholder: '输入分类名称', value: cat ? cat.name : '', maxlength: 8 });
     // 类型选择（编辑时锁定，避免类型与流水不匹配）
     let selectedType = cat ? cat.type : (currentType === 'income' ? 'income' : 'expense');
     const typeRow = el('div', { class: 'type-tabs type-tabs-2', style: 'margin:8px 0;' });
@@ -95,40 +95,55 @@ export async function renderCategories(mount) {
     }
     typeRow.append(tExp, tInc);
 
-    let selectedIcon = cat ? cat.icon : '💰';
-    let selectedColor = cat ? cat.color : '#007AFF';
+    const exactOption = cat ? CATEGORY_ICON_OPTIONS.find(option => option.token === cat.icon) : null;
+    const compatibleOption = cat ? CATEGORY_ICON_OPTIONS.find(option => option.key === resolveCategoryIconKey(cat)) : null;
+    let selectedIcon = exactOption?.token || compatibleOption?.token || (selectedType === 'income' ? '💼' : '🍜');
+    let selectedColor = cat ? cat.color : '#F36F62';
 
-    const iconGrid = el('div', { class: 'cat-grid', style: 'margin:8px 0;max-height:160px;overflow-y:auto;' });
+    const previewIcon = el('div', { class: 'category-preview-icon' });
+    const nameCount = el('span', { class: 'category-name-count', text: `${nameInput.value.length}/8` });
+    const nameEditor = el('div', { class: 'category-name-editor' }, [previewIcon, nameInput, nameCount]);
+
+    function updatePreview() {
+      previewIcon.style.background = `${selectedColor}18`;
+      previewIcon.style.color = selectedColor;
+      previewIcon.replaceChildren(categoryIconNode({ icon: selectedIcon, name: nameInput.value }, { size: 25 }));
+      nameCount.textContent = `${nameInput.value.length}/8`;
+    }
+    nameInput.addEventListener('input', updatePreview);
+
+    const iconGrid = el('div', { class: 'cat-grid category-icon-grid' });
     function renderIcons() {
       iconGrid.innerHTML = '';
-      ICONS.forEach(ic => {
-        const item = el('button', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), type: 'button', 'aria-label': `选择图标 ${ic}`, onclick: () => { selectedIcon = ic; renderIcons(); } }, [
-          el('div', { class: 'cat-icon', style: `background:var(--fill-1);color:var(--text)` }, [document.createTextNode(ic)]),
-          el('div', { class: 'cat-name', text: '' })
+      CATEGORY_ICON_OPTIONS.forEach(option => {
+        const item = el('button', { class: 'cat-item' + (selectedIcon === option.token ? ' selected' : ''), type: 'button', 'aria-label': `选择${option.label}图标`, onclick: () => { selectedIcon = option.token; renderIcons(); } }, [
+          el('div', { class: 'cat-icon category-line-icon' }, [categoryIconNode({ icon: option.token, name: option.label }, { size: 23 })]),
+          el('div', { class: 'cat-name', text: option.label })
         ]);
         iconGrid.appendChild(item);
       });
+      updatePreview();
     }
     renderIcons();
 
-    const colorRow = el('div', { style: 'display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;' });
+    const colorRow = el('div', { class: 'category-color-row' });
     function renderColors() {
       colorRow.innerHTML = '';
       COLORS.forEach(c => {
-        const sw = el('button', { type: 'button', 'aria-label': `选择颜色 ${c}`, style: `width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:${selectedColor === c ? '3px solid var(--text)' : '3px solid transparent'};`, onclick: () => { selectedColor = c; renderColors(); } });
+        const sw = el('button', { class: 'category-color-swatch' + (selectedColor === c ? ' selected' : ''), type: 'button', 'aria-label': `选择颜色 ${c}`, style: `--swatch:${c}`, onclick: () => { selectedColor = c; renderColors(); } });
         colorRow.appendChild(sw);
       });
+      updatePreview();
     }
     renderColors();
 
     form.append(
-      el('label', { class: 'field', style: 'display:block;margin-bottom:8px;', text: '分类名称' }),
-      nameInput,
+      nameEditor,
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '类型' }),
       typeRow,
-      el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择图标' }),
+      el('div', { class: 'category-form-label', text: '选择图标' }),
       iconGrid,
-      el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '选择颜色' }),
+      el('div', { class: 'category-form-label', text: '选择颜色' }),
       colorRow
     );
 

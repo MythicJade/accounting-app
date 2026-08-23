@@ -5,6 +5,7 @@ import { getAccountsMap } from '../accounts.js';
 import { listCategories } from '../categories.js';
 import { formatMoney, todayStr } from '../format.js';
 import { drawLineChart } from '../charts/line-chart.js';
+import { categoryIconNode } from '../category-icons.js';
 import { toast, confirmDialog, el } from '../ui.js';
 import { router } from '../router.js';
 
@@ -137,20 +138,23 @@ export async function renderAccountDetail(mount, { id }) {
       const list = el('div', {});
       const recent = yearTxs.slice(0, 20);
       for (const t of recent) {
-        let nameText, amountText, amountClass;
+        let nameText, amountText, amountClass, iconNode;
         if (t.type === 'transfer') {
           const fromName = await getAccountName(t.accountId);
           const toName = await getAccountName(t.toAccountId);
-          nameText = '🔄 ' + fromName + ' → ' + toName;
+          nameText = fromName + ' → ' + toName;
+          iconNode = el('div', { class: 'icon category-line-icon', style: 'background:var(--c-transfer-surface);color:var(--transfer);' }, [document.createTextNode('↔')]);
           amountText = formatMoney(t.amount);
           amountClass = 'transfer';
         } else {
           const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#aeaeb2' };
-          nameText = cat.icon + ' ' + cat.name;
+          nameText = cat.name;
+          iconNode = el('div', { class: 'icon category-line-icon', style: `background:${cat.color}18;color:${cat.color}` }, [categoryIconNode(cat, { size: 20 })]);
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
         }
         const item = el('button', { class: 'list-item list-item-button', type: 'button', onclick: () => { location.hash = '#/edit/' + t.id; } }, [
+          iconNode,
           el('div', { class: 'meta', style: 'flex:1;' }, [
             el('div', { class: 'between' }, [
               el('span', { class: 'text-sm', text: nameText }),

@@ -1444,6 +1444,171 @@ body.route-add .view { padding: 0 16px; }
   .keypad-row .keypad button { padding: 9px 0; }
 }
 
+/* ===== 2.1.1 compact layout and reliable category paging ===== */
+html,
+body { font-size: 14px; }
+
+.view { padding: calc(16px + var(--safe-top)) 16px calc(var(--tabbar-h) + 28px + var(--safe-bottom)); }
+.card { padding: 15px; margin-bottom: 12px; border-radius: 18px; }
+.card-title { margin-bottom: 12px; font-size: 15px; }
+.topbar { min-height: 50px; margin: -6px -16px 14px; padding: 8px 16px; padding-top: calc(8px + var(--safe-top)); }
+.topbar h1 { font-size: 20px; }
+.topbar .back { width: 36px; height: 36px; border-radius: 13px; }
+.section-heading { min-height: 21px; }
+.section-heading::before { height: 16px; width: 4px; }
+
+.category-line-icon svg { display: block; max-width: 100%; max-height: 100%; }
+
+/* Home and transaction density */
+.home-header { margin: 1px 2px 14px; }
+.home-header h1 { font-size: 27px; }
+.home-account-button { width: 44px; height: 44px; border-radius: 15px; }
+.home-search { min-height: 48px; margin-bottom: 14px; padding: 0 15px; }
+.home-overview { padding: 18px; border-radius: 21px; }
+.home-overview .summary-balance { margin-top: 13px; }
+.home-overview .summary-amount { font-size: 32px; }
+.home-overview .summary-row { margin-top: 15px; padding-top: 13px; }
+.home-overview .summary-sub-amount { font-size: 16px; }
+.overview-budget { margin-top: 14px; padding: 11px 12px; }
+.tx-section { margin-top: 19px; }
+.tx-date-header { min-height: 34px; padding: 8px 4px 6px; }
+.tx-item { min-height: 67px; gap: 11px; padding: 11px 13px; margin-bottom: 8px; border-radius: 16px; }
+.tx-item .icon { width: 42px; height: 42px; border-radius: 13px; font-size: 18px; }
+.tx-item .tx-left { gap: 11px; }
+.tx-item .tx-left .name { font-size: 14px; }
+.tx-item .amount { font-size: 15px; }
+
+/* Account, assets, stats and settings density */
+.accounts-summary-area { gap: 10px; margin-bottom: 14px; }
+.account-summary-card { min-height: 196px; padding: 17px; border-radius: 21px; }
+.account-summary-card .summary-amount { font-size: 28px; }
+.account-summary-card .summary-row { margin-top: 16px; padding-top: 13px; }
+.entry-box { min-height: 93px; border-radius: 18px; }
+.account-lists { gap: 12px; }
+.account-type-section { padding: 15px; border-radius: 21px; }
+.account-section-head { margin-bottom: 12px; }
+.account-type-section .section-title { font-size: 15px; }
+.account-mini-card { min-height: 76px; padding: 13px; border-radius: 16px; }
+.account-mini-card .mini-icon { width: 40px; height: 40px; border-radius: 13px; font-size: 19px; }
+.account-mini-card .mini-name { font-size: 14px; }
+.account-mini-card .mini-amount { font-size: 17px; }
+.year-nav { padding-bottom: 15px; }
+.year-nav .range-label { font-size: 20px; }
+.asset-snapshot .summary-amount { font-size: 27px; }
+.assets-trend-table th,
+.assets-trend-table td { padding: 11px 6px; }
+.stats-intro { margin: 1px 4px 13px; }
+.stats-intro h1 { font-size: 24px; }
+.period-tabs { padding-bottom: 7px; }
+.period-tabs button { padding: 6px 4px 10px; font-size: 15px; }
+.range-nav { padding: 5px 4px 10px; }
+.range-nav .label { font-size: 16px; }
+.stats-account-chips { padding-bottom: 10px; }
+.stats-overview { padding: 7px 7px 14px; border-radius: 20px; }
+.stats-type-tabs { margin-bottom: 8px; }
+.stats-type-tabs button { padding: 8px; }
+.chart-card { padding: 16px 8px 13px; border-radius: 20px; }
+.cat-rank-item { padding: 10px 0; }
+.cat-rank-item .icon { width: 38px; height: 38px; border-radius: 12px; }
+.settings-intro { margin: 1px 4px 15px; }
+.settings-avatar { width: 48px; height: 48px; border-radius: 16px; font-size: 22px; }
+.settings-intro h1 { font-size: 24px; }
+.setting-list { border-radius: 19px; }
+.setting-item { min-height: 54px; padding: 12px 15px; }
+.setting-item .icon { width: 33px; height: 33px; }
+
+/* Add/edit transaction: one visible row, every category reachable */
+body.route-add .view {
+  height: 100vh;
+  height: 100dvh;
+  padding: 0 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.add-layout { min-height: 100%; overflow: visible; }
+.add-top-row { gap: 8px; padding-top: calc(6px + var(--safe-top)); padding-bottom: 6px; }
+.add-type-tabs button { padding: 8px 4px; }
+.amount-display.amount-compact {
+  min-height: 88px;
+  flex: 0 0 auto;
+  padding: 10px 18px 12px;
+  margin-bottom: 8px;
+  border-radius: 19px;
+}
+.amount-compact .value { font-size: 32px; }
+.amount-number { margin-top: 0; }
+.add-main { flex: 1 1 auto; min-height: 112px; overflow: visible; }
+.add-cat-card,
+.add-transfer-card { min-height: 112px; padding: 8px 7px 5px; border-radius: 18px; }
+.add-cat-card { overflow: hidden; }
+.add-section-label { padding: 0 8px 3px; font-size: 10px; }
+.add-cat-card .cat-carousel { min-height: 62px; }
+.cat-pages-track { height: 62px; }
+.cat-page {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-rows: 62px;
+  grid-auto-rows: 62px;
+  gap: 3px;
+  padding: 0 1px;
+}
+.cat-page .cat-item { min-width: 0; padding: 2px 1px; gap: 1px; border-radius: 11px; }
+.cat-page .cat-item .cat-icon { width: 38px; height: 38px; border-radius: 12px; font-size: 18px; }
+.cat-page .cat-item .cat-name { width: 100%; margin-top: 0; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-icon-add { color: var(--text-3); background: var(--fill-1); border: 1px dashed var(--fill-2); }
+.cat-pagination { height: 23px; display: flex; align-items: center; justify-content: center; gap: 7px; }
+.cat-page-btn { width: 27px; height: 23px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-2); background: var(--fill-1); font-size: 18px; line-height: 1; }
+.cat-page-btn:disabled { opacity: .28; }
+.cat-dots { padding: 0; gap: 5px; }
+.cat-dot { width: 6px; height: 6px; padding: 0; border-radius: 50%; }
+.cat-page-label { min-width: 24px; color: var(--text-3); font-size: 9px; text-align: center; }
+.add-fields { margin-bottom: 6px; }
+.add-field label { font-size: 10px; }
+.add-field .input { min-height: 37px; padding: 7px; font-size: 12px; }
+.keypad-row { gap: 7px; }
+.keypad-row .keypad { gap: 4px; padding: 4px; border-radius: 14px; }
+.keypad-row .keypad button { padding: 9px 0; border-radius: 9px; font-size: 17px; }
+.keypad-save { flex-basis: 68px; border-radius: 14px; font-size: 14px; }
+
+/* Category manager and offline SVG picker */
+.category-form { max-height: min(66vh, 540px); overflow-y: auto; padding: 2px; font-size: 13px; }
+.category-name-editor {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 66px;
+  padding: 9px 12px;
+  border-radius: 17px;
+  background: var(--fill-1);
+}
+.category-preview-icon { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; border-radius: 15px; }
+.category-name-input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 16px; }
+.category-name-input::placeholder { color: var(--text-3); }
+.category-name-count { color: var(--text-3); font-size: 10px; }
+.category-form-label { margin: 12px 2px 6px; color: var(--text-2); font-size: 12px; }
+.category-icon-grid { grid-template-columns: repeat(4, 1fr); gap: 5px; max-height: 226px; margin: 0; padding: 6px; overflow-y: auto; border-radius: 16px; background: var(--fill-1); }
+.category-icon-grid,
+.category-color-row { scrollbar-width: none; -ms-overflow-style: none; }
+.category-icon-grid::-webkit-scrollbar,
+.category-color-row::-webkit-scrollbar { display: none; }
+.category-icon-grid .cat-item { padding: 6px 2px; }
+.category-icon-grid .cat-icon { width: 40px; height: 40px; border-radius: 12px; color: var(--text-2); background: #fff; }
+.category-icon-grid .cat-name { max-width: 100%; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-icon-grid .cat-item.selected { background: var(--c-primary-light); }
+.category-icon-grid .cat-item.selected .cat-icon { background: var(--c-primary); color: #342B16; }
+.category-color-row { display: flex; gap: 9px; padding: 5px 2px 2px; overflow-x: auto; }
+.category-color-swatch { position: relative; flex: 0 0 29px; width: 29px; height: 29px; border-radius: 50%; background: var(--swatch); }
+.category-color-swatch.selected::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; border: 2px solid #fff; }
+
+@media (max-height: 660px) {
+  .amount-display.amount-compact { min-height: 72px; padding-top: 7px; padding-bottom: 7px; }
+  .amount-compact .value { font-size: 28px; }
+  .add-main { min-height: 106px; }
+  .add-cat-card,
+  .add-transfer-card { min-height: 106px; }
+  .keypad-row .keypad button { padding: 6px 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;

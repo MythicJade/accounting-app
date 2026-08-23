@@ -4,6 +4,7 @@ import { listAccounts } from '../accounts.js';
 import { listCategories } from '../categories.js';
 import { dateWithWeekday, formatMoney } from '../format.js';
 import { el } from '../ui.js';
+import { categoryIconNode } from '../category-icons.js';
 
 const PAGE_SIZE = 50;
 
@@ -105,7 +106,7 @@ export async function renderTransactions(mount) {
   }
 
   function renderTransaction(transaction) {
-    let icon = '🔄';
+    let iconNode = el('span', { text: '↔' });
     let color = '#5856D6';
     let name;
     let accountName = '';
@@ -116,15 +117,15 @@ export async function renderTransactions(mount) {
     } else {
       const category = categoryMap.get(transaction.categoryId);
       const source = accountMap.get(transaction.accountId);
-      icon = category?.icon || '❓';
       color = category?.color || '#AEAEB2';
       name = category?.name || '未分类';
       accountName = source?.name || '未知账户';
+      iconNode = categoryIconNode(category || { name: '未分类', icon: '➕' }, { size: 23 });
     }
     const sign = transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : '';
     const item = el('button', { class: 'tx-item tx-item-button', type: 'button', 'aria-label': `编辑 ${name} ${formatMoney(transaction.amount)}` }, [
       el('span', { class: 'tx-left' }, [
-        el('span', { class: 'icon', style: `background:${color}22;color:${color}`, text: icon }),
+        el('span', { class: 'icon category-line-icon', style: `background:${color}18;color:${color}` }, [iconNode]),
         el('span', { class: 'tx-copy' }, [
           el('span', { class: 'name', text: name }),
           transaction.note ? el('span', { class: 'tx-note', text: transaction.note }) : null

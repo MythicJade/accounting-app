@@ -5,6 +5,7 @@ import { getAccountsMap, listAccounts } from '../accounts.js';
 import { formatMoney, dateWithWeekday, currentMonthKey, monthKeyToLabel } from '../format.js';
 import { el, toast } from '../ui.js';
 import { router } from '../router.js';
+import { categoryIconNode } from '../category-icons.js';
 
 let _categoriesCache = null;
 
@@ -195,7 +196,7 @@ export async function renderHome(mount) {
         } else {
           const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#aeaeb2' };
           const acc = accMap.get(t.accountId);
-          iconNode = el('div', { class: 'icon', style: `background:${cat.color}22;color:${cat.color}` }, [document.createTextNode(cat.icon)]);
+          iconNode = el('div', { class: 'icon category-line-icon', style: `background:${cat.color}18;color:${cat.color}` }, [categoryIconNode(cat, { size: 23 })]);
           nameText = cat.name;
           // 移除账户筛选后，始终显示账户名
           accountName = acc ? acc.name : '';

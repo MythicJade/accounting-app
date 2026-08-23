@@ -1,5 +1,5 @@
-/* My Accounting PWA v2.1.0 application shell. */
-const CACHE_NAME = 'accounting-v2.1.0';
+/* My Accounting PWA v2.1.1 application shell. */
+const CACHE_NAME = 'accounting-v2.1.1';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const PRECACHE_URLS = [
   './js/db.js',
   './js/store.js',
   './js/categories.js',
+  './js/category-icons.js',
   './js/accounts.js',
   './js/excel-io.js',
   './js/backup-crypto.js',

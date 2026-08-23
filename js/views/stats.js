@@ -6,6 +6,7 @@ import { getRange, shiftRange, rangeLabel, listDates, formatMoney, formatDateStr
 import { el } from '../ui.js';
 import { drawPieChart } from '../charts/pie-chart.js';
 import { drawLineChart } from '../charts/line-chart.js';
+import { categoryIconNode } from '../category-icons.js';
 
 const PERIODS = [
   { key: 'month',   label: '月' },
@@ -334,7 +335,7 @@ export async function renderStats(mount) {
         const pct = total > 0 ? Math.round(d.value / total * 100) : 0;
         const catObj = allCats.find(c => c.id === d.id);
         const item = el('div', { class: 'cat-rank-item' }, [
-          el('div', { class: 'icon', style: `background:${d.color}22;color:${d.color}` }, [document.createTextNode(catObj?.icon || '💰')]),
+          el('div', { class: 'icon category-line-icon', style: `background:${d.color}18;color:${d.color}` }, [categoryIconNode(catObj || { name: d.label, icon: '➕' }, { size: 21 })]),
           el('div', { class: 'info' }, [
             el('div', { class: 'row1' }, [
               el('span', { class: 'name', text: d.label }),

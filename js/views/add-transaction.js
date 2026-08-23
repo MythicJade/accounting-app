@@ -5,8 +5,9 @@ import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
 import { todayStr } from '../format.js';
 import { toast, confirmDialog, vibrate, el } from '../ui.js';
+import { categoryIconNode } from '../category-icons.js';
 
-const CATS_PER_PAGE = 10; // 5 列 × 2 行
+const CATS_PER_PAGE = 5; // 单行分页，避免微信等较矮视口裁切第二行
 
 export async function renderAddTransaction(mount, params = {}) {
   const editId = params.id ? Number(params.id) : null;
@@ -74,7 +75,11 @@ export async function renderAddTransaction(mount, params = {}) {
   const catTrack = el('div', { class: 'cat-pages-track' });
   catCarousel.appendChild(catTrack);
   const catDots = el('div', { class: 'cat-dots' });
-  let currentPageIdx = 0;
+  let currentPageIdx = Math.max(0, Math.floor(Math.max(0, cats.findIndex(c => c.id === state.categoryId)) / CATS_PER_PAGE));
+  const catPageLabel = el('span', { class: 'cat-page-label', 'aria-live': 'polite', text: '1/1' });
+  const catPrevButton = el('button', { class: 'cat-page-btn', type: 'button', 'aria-label': '上一组分类', text: '‹', onclick: () => goCategoryPage(currentPageIdx - 1) });
+  const catNextButton = el('button', { class: 'cat-page-btn', type: 'button', 'aria-label': '下一组分类', text: '›', onclick: () => goCategoryPage(currentPageIdx + 1) });
+  const catPagination = el('div', { class: 'cat-pagination' }, [catPrevButton, catDots, catPageLabel, catNextButton]);
 
   function renderCats() {
     catTrack.innerHTML = '';
@@ -85,6 +90,7 @@ export async function renderAddTransaction(mount, params = {}) {
         el('button', { class: 'btn', style: 'margin-top:8px;', onclick: () => location.hash = '#/categories' }, [el('span', { text: '去创建分类' })])
       ]);
       catTrack.appendChild(empty);
+      catPagination.hidden = true;
       return;
     }
     const itemsWithAdd = cats.concat([{ _isAdd: true }]);
@@ -96,23 +102,26 @@ export async function renderAddTransaction(mount, params = {}) {
         let item;
         if (c._isAdd) {
           item = el('button', { class: 'cat-item', type: 'button', onclick: () => location.hash = '#/categories' }, [
-            el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text-3);border:2px dashed var(--fill-2);' }, [document.createTextNode('+')]),
+            el('div', { class: 'cat-icon cat-icon-add' }, [
+              el('svg', { viewBox: '0 0 24 24', width: '22', height: '22', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<path d="M12 5v14M5 12h14"/>' })
+            ]),
             el('div', { class: 'cat-name', text: '管理' })
           ]);
         } else {
           item = el('button', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), type: 'button', onclick: () => selectCat(c.id) }, [
-            el('div', { class: 'cat-icon', style: `background:${c.color}22;color:${c.color}` }, [document.createTextNode(c.icon)]),
+            el('div', { class: 'cat-icon', style: `background:${c.color}18;color:${c.color}` }, [categoryIconNode(c, { size: 23 })]),
             el('div', { class: 'cat-name', text: c.name })
           ]);
         }
         page.appendChild(item);
       });
       catTrack.appendChild(page);
-      const dot = el('span', { class: 'cat-dot' + (p === 0 ? ' active' : '') });
+      const dot = el('button', { class: 'cat-dot' + (p === currentPageIdx ? ' active' : ''), type: 'button', 'aria-label': `第 ${p + 1} 组分类`, onclick: () => goCategoryPage(p) });
       catDots.appendChild(dot);
     }
+    currentPageIdx = Math.min(currentPageIdx, pageCount - 1);
+    catPagination.hidden = false;
     catDots.style.display = pageCount > 1 ? 'flex' : 'none';
-    currentPageIdx = 0;
     updateTrackPosition();
   }
 
@@ -124,6 +133,16 @@ export async function renderAddTransaction(mount, params = {}) {
     Array.from(catDots.children).forEach((d, i) => {
       d.className = 'cat-dot' + (i === currentPageIdx ? ' active' : '');
     });
+    catPageLabel.textContent = `${currentPageIdx + 1}/${pages.length}`;
+    catPrevButton.disabled = currentPageIdx <= 0;
+    catNextButton.disabled = currentPageIdx >= pages.length - 1;
+  }
+
+  function goCategoryPage(nextPage) {
+    const lastPage = Math.max(0, catTrack.children.length - 1);
+    currentPageIdx = Math.max(0, Math.min(lastPage, nextPage));
+    catTrack.style.transition = 'transform .25s ease';
+    updateTrackPosition();
   }
 
   // 拖动/滑动切换页面
@@ -187,12 +206,13 @@ export async function renderAddTransaction(mount, params = {}) {
   };
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('resize', updateTrackPosition);
 
   renderCats();
   const catCard = el('section', { class: 'card add-cat-card' }, [
     el('div', { class: 'add-section-label', text: '选择分类' }),
     catCarousel,
-    catDots
+    catPagination
   ]);
 
   // Transfer-specific fields (from / to account selectors)
@@ -282,6 +302,7 @@ export async function renderAddTransaction(mount, params = {}) {
     document.body.classList.remove('route-add');
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
+    window.removeEventListener('resize', updateTrackPosition);
   };
 
   function applyTypeVisibility() {
@@ -309,6 +330,7 @@ export async function renderAddTransaction(mount, params = {}) {
       state.categoryId = null;
     }
     if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
+    currentPageIdx = 0;
     renderCats();
     applyTypeVisibility();
   }
