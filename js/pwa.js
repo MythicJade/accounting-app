@@ -4,6 +4,7 @@ import { showModal, toast } from './ui.js';
 let updatePromptOpen = false;
 
 export function registerPWA() {
+  if (globalThis.NativeApp?.isNative) return;
   if (!('serviceWorker' in navigator)) return;
 
   let reloading = false;

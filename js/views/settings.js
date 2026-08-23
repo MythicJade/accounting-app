@@ -5,6 +5,7 @@ import { toast, confirmDialog, showModal, promptDialog, el } from '../ui.js';
 import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
 import { router } from '../router.js';
 import { APP_VERSION } from '../version.js';
+import { isNativeApp, shareTextFile } from '../native-bridge.js';
 
 export async function renderSettings(mount) {
   const count = await countTransactions();
@@ -67,7 +68,7 @@ export async function renderSettings(mount) {
       el('div', { class: 'icon', text: '📊' }),
       el('div', { class: 'text' }, [
         el('div', { text: '导出 Excel' }),
-        el('div', { class: 'text-sm text-3', text: '含流水/账户/分类，首次使用需联网' })
+        el('div', { class: 'text-sm text-3', text: '含流水、账户和分类，全程离线生成' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
@@ -75,7 +76,7 @@ export async function renderSettings(mount) {
       el('div', { class: 'icon', text: '📑' }),
       el('div', { class: 'text' }, [
         el('div', { text: '导入 Excel' }),
-        el('div', { class: 'text-sm text-3', text: '从 .xlsx 安全合并，首次使用需联网' })
+        el('div', { class: 'text-sm text-3', text: '从 .xlsx 安全合并，全程离线解析' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
@@ -105,8 +106,8 @@ export async function renderSettings(mount) {
     el('button', { class: 'setting-item', type: 'button', onclick: onShowInstallGuide }, [
       el('div', { class: 'icon', text: '📱' }),
       el('div', { class: 'text' }, [
-        el('div', { text: '安装到手机主屏' }),
-        el('div', { class: 'text-sm text-3', text: '查看真机安装步骤' })
+        el('div', { text: isNativeApp() ? 'Android 应用信息' : '安装到手机主屏' }),
+        el('div', { class: 'text-sm text-3', text: isNativeApp() ? '本机离线版与数据说明' : '查看真机安装步骤' })
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
@@ -365,7 +366,7 @@ export async function renderSettings(mount) {
       }
       const d = new Date();
       const ts = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-      downloadJson(payload, 'accounting-backup-' + ts + suffix + '.json');
+      await downloadJson(payload, 'accounting-backup-' + ts + suffix + '.json');
       toast('已导出 ' + data.transactions.length + ' 条记录');
     } catch (e) {
       console.error(e);
@@ -373,8 +374,10 @@ export async function renderSettings(mount) {
     }
   }
 
-  function downloadJson(data, filename) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  async function downloadJson(data, filename) {
+    const json = JSON.stringify(data, null, 2);
+    if (await shareTextFile(filename, json, 'application/json')) return;
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -405,6 +408,16 @@ export async function renderSettings(mount) {
 
   async function onShowInstallGuide() {
     const body = el('div', { style: 'font-size:14px;line-height:1.7;color:var(--text);' });
+    if (isNativeApp()) {
+      body.innerHTML = `
+        <p style="margin-bottom:8px;"><b>本机离线版</b></p>
+        <p style="color:var(--text-2);">当前运行的是 Android 原生安装版。页面、图标和 Excel 组件均已随应用打包，无网络也能记账、统计和导入导出。</p>
+        <p style="margin-top:12px;color:var(--text-2);">账目存放在本应用的本机数据空间中。卸载前请先从「导出备份」保存 JSON 文件，升级时直接覆盖安装即可保留数据。</p>
+        <p style="margin-top:14px;color:var(--text-3);font-size:12px;">版本：v${APP_VERSION}</p>
+      `;
+      await showModal({ title: 'Android 应用信息', body, actions: [{ label: '知道了', type: 'primary' }] });
+      return;
+    }
     body.innerHTML = `
       <p style="margin-bottom:8px;"><b>本机预览</b></p>
       <ol style="padding-left:18px;margin-bottom:14px;color:var(--text-2);">
@@ -423,8 +436,8 @@ export async function renderSettings(mount) {
     body.innerHTML = `
       <div style="font-size:48px;margin-bottom:8px;">📒</div>
       <p style="font-weight:600;margin-bottom:4px;">我的记账 v${APP_VERSION}</p>
-      <p style="color:var(--text-2);margin-bottom:12px;">个人离线记账 PWA 应用</p>
-      <p style="color:var(--text-3);font-size:12px;">账目使用 IndexedDB 存储在本机<br>应用更新会联网检查静态文件，账目不会自动上传</p>
+      <p style="color:var(--text-2);margin-bottom:12px;">个人离线记账${isNativeApp() ? ' Android' : ' PWA'} 应用</p>
+      <p style="color:var(--text-3);font-size:12px;">账目使用 IndexedDB 存储在本机<br>${isNativeApp() ? '应用可全程离线运行，数据不会自动上传' : '应用更新会联网检查静态文件，账目不会自动上传'}</p>
     `;
     await import('../ui.js').then(m => m.showModal({ title: '关于', body, actions: [{ label: '关闭', type: 'primary' }] }));
   }

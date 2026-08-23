@@ -6,7 +6,22 @@ export const STARTER_CATEGORIES = [
   { name: '交通', type: 'expense', icon: '🚇', color: '#5AC8FA' },
   { name: '购物', type: 'expense', icon: '🛍️', color: '#FF2D55' },
   { name: '居住', type: 'expense', icon: '🏠', color: '#5856D6' },
+  { name: '零食', type: 'expense', icon: '🍬', color: '#F36F62' },
+  { name: '饮品', type: 'expense', icon: '🥤', color: '#15A6A1' },
+  { name: '医疗', type: 'expense', icon: '🏥', color: '#C77C86' },
+  { name: '通讯', type: 'expense', icon: '📱', color: '#6677E8' },
+  { name: '娱乐', type: 'expense', icon: '🎮', color: '#A56C8E' },
+  { name: '学习', type: 'expense', icon: '🎓', color: '#374151' },
+  { name: '日用', type: 'expense', icon: '🧻', color: '#26B982' },
+  { name: '服饰', type: 'expense', icon: '👕', color: '#F39B35' },
+  { name: '旅行', type: 'expense', icon: '✈️', color: '#5BC0D0' },
+  { name: '人情', type: 'expense', icon: '🎁', color: '#FF6B8A' },
+  { name: '其他', type: 'expense', icon: '📦', color: '#93A1B1' },
   { name: '工资', type: 'income', icon: '💼', color: '#34C759' },
+  { name: '奖金', type: 'income', icon: '🎉', color: '#FFC62E' },
+  { name: '理财', type: 'income', icon: '📈', color: '#6677E8' },
+  { name: '兼职', type: 'income', icon: '🧰', color: '#5BC0D0' },
+  { name: '报销', type: 'income', icon: '🧾', color: '#93BF38' },
   { name: '其他收入', type: 'income', icon: '💰', color: '#00C7BE' }
 ];
 

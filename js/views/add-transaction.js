@@ -7,7 +7,7 @@ import { todayStr } from '../format.js';
 import { toast, confirmDialog, vibrate, el } from '../ui.js';
 import { categoryIconNode } from '../category-icons.js';
 
-const CATS_PER_PAGE = 5; // 单行分页，避免微信等较矮视口裁切第二行
+const CATS_PER_PAGE = 10; // 5 列 × 2 行，接近原生记账应用的分类密度
 
 export async function renderAddTransaction(mount, params = {}) {
   const editId = params.id ? Number(params.id) : null;
@@ -61,7 +61,7 @@ export async function renderAddTransaction(mount, params = {}) {
   const topRow = el('div', { class: 'add-top-row' }, [backBtn, typeTabs, rightSlot]);
 
   // Amount display（键盘固定显示，无需点击弹窗）
-  const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'empty'), text: state.amount || '0.00' });
+  const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'is-empty'), text: state.amount || '0.00' });
   const amountDisplay = el('div', { class: 'amount-display amount-compact' }, [
     el('span', { class: 'amount-caption', text: editId ? '修改金额' : '记账金额' }),
     el('div', { class: 'amount-number' }, [
@@ -319,7 +319,7 @@ export async function renderAddTransaction(mount, params = {}) {
 
   function refreshAmount() {
     amountValue.textContent = state.amount || '0.00';
-    amountValue.className = 'value ' + (state.amount ? '' : 'empty');
+    amountValue.className = 'value ' + (state.amount ? '' : 'is-empty');
   }
   function refreshType() {
     typeBtns.expense.className = state.type === 'expense' ? 'active expense' : '';

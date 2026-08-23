@@ -13,6 +13,7 @@ const PRECACHE_URLS = [
   './js/category-icons.js',
   './js/accounts.js',
   './js/excel-io.js',
+  './js/native-bridge.js',
   './js/backup-crypto.js',
   './js/date-only.js',
   './js/money.js',

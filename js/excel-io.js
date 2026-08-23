@@ -7,6 +7,7 @@ import { getAllTransactions, importExternalRows } from './store.js';
 import { todayStr } from './format.js';
 import { normalizeDateOnly } from './date-only.js';
 import { toCents } from './money.js';
+import { shareBase64File } from './native-bridge.js';
 
 const HEADERS = [
   '记账日期',
@@ -121,7 +122,13 @@ export async function exportToExcel() {
   XLSX.utils.book_append_sheet(wb, wsCat, '分类');
 
   const filename = 'accounting-export-' + todayStr() + '.xlsx';
-  XLSX.writeFile(wb, filename);
+  const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  const shared = await shareBase64File(
+    filename,
+    base64,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  if (!shared) XLSX.writeFile(wb, filename);
   return filename;
 }
 

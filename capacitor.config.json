@@ -1,0 +1,26 @@
+{
+  "appId": "com.mythicjade.accounting",
+  "appName": "我的记账",
+  "webDir": "www",
+  "backgroundColor": "#F4F5F8",
+  "android": {
+    "backgroundColor": "#F4F5F8",
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#F4F5F8",
+      "androidScaleType": "CENTER_INSIDE",
+      "showSpinner": false,
+      "splashFullScreen": false,
+      "splashImmersive": false
+    },
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "LIGHT",
+      "backgroundColor": "#F4F5F8"
+    }
+  }
+}

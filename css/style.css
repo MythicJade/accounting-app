@@ -328,7 +328,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 .amount-display .currency { font-size: 18px; opacity: .9; vertical-align: top; margin-right: 4px; }
 .amount-display .value { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.amount-display .value.empty { color: rgba(255,255,255,0.6); font-weight: 400; }
+.amount-display .value.is-empty { color: rgba(255,255,255,0.6); font-weight: 400; }
 
 .type-tabs { display: flex; background: var(--border); border-radius: var(--radius); padding: 3px; margin-bottom: 14px; }
 .type-tabs button { flex: 1; padding: 8px; border-radius: 9px; font-size: 14px; color: var(--text-2); transition: all .15s; }
@@ -653,9 +653,9 @@ body.route-add .view {
 .assets-trend-table tr.future td { color: var(--text-3); opacity: 0.5; }
 
 /* ===== 右滑提示 ===== */
-.swipe-hint { position: fixed; top: 50%; left: 12px; transform: translateY(-50%); background: rgba(0,0,0,0.7); color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 12px; z-index: 100; animation: swipe-hint-pulse 1.5s ease-in-out infinite; transition: opacity 0.5s; }
+.swipe-hint { width: max-content; max-width: 100%; margin: -2px auto 12px; background: #E9EBF0; color: var(--text-2); padding: 6px 12px; border-radius: 999px; font-size: 11px; line-height: 1.4; text-align: center; animation: swipe-hint-pulse 1.8s ease-in-out infinite; transition: opacity .4s, transform .4s; }
 .swipe-hint.fade-out { opacity: 0; }
-@keyframes swipe-hint-pulse { 0%, 100% { transform: translateY(-50%) translateX(0); } 50% { transform: translateY(-50%) translateX(4px); } }
+@keyframes swipe-hint-pulse { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-3px); } }
 
 /* ===== Onboarding & full transaction history ===== */
 .onboarding-card { display: flex; gap: 14px; align-items: flex-start; border: 1px solid rgba(0, 122, 255, .16); }
@@ -1308,7 +1308,7 @@ body.route-add .view { padding: 0 16px; }
 .amount-number { display: flex; justify-content: center; align-items: baseline; margin-top: 2px; }
 .amount-compact .currency { color: var(--c-primary-dark); font-size: 17px; font-weight: 650; }
 .amount-compact .value { color: var(--text); font-size: 38px; font-weight: 690; letter-spacing: -.035em; }
-.amount-compact .value.empty { color: #C9CBD0; font-weight: 550; }
+.amount-compact .value.is-empty { color: #C9CBD0; font-weight: 550; }
 .add-cat-card,
 .add-transfer-card { padding: 11px 8px 7px; border-radius: 20px; }
 .add-section-label { padding: 0 9px 5px; color: var(--text-3); font-size: 11px; }
@@ -1537,17 +1537,19 @@ body.route-add .view {
 }
 .amount-compact .value { font-size: 32px; }
 .amount-number { margin-top: 0; }
-.add-main { flex: 1 1 auto; min-height: 112px; overflow: visible; }
+.add-main { flex: 1 1 auto; min-height: 174px; overflow: visible; }
 .add-cat-card,
-.add-transfer-card { min-height: 112px; padding: 8px 7px 5px; border-radius: 18px; }
+.add-transfer-card { padding: 8px 7px 5px; border-radius: 18px; }
+.add-cat-card { flex: 0 0 auto; min-height: 174px; }
+.add-transfer-card { flex: 0 0 148px; min-height: 148px; }
 .add-cat-card { overflow: hidden; }
 .add-section-label { padding: 0 8px 3px; font-size: 10px; }
-.add-cat-card .cat-carousel { min-height: 62px; }
-.cat-pages-track { height: 62px; }
+.add-cat-card .cat-carousel { flex: 0 0 124px; min-height: 124px; }
+.cat-pages-track { height: 124px; }
 .cat-page {
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  grid-template-rows: 62px;
-  grid-auto-rows: 62px;
+  grid-template-rows: repeat(2, 60px);
+  grid-auto-rows: 60px;
   gap: 3px;
   padding: 0 1px;
 }
@@ -1603,9 +1605,13 @@ body.route-add .view {
 @media (max-height: 660px) {
   .amount-display.amount-compact { min-height: 72px; padding-top: 7px; padding-bottom: 7px; }
   .amount-compact .value { font-size: 28px; }
-  .add-main { min-height: 106px; }
-  .add-cat-card,
-  .add-transfer-card { min-height: 106px; }
+  .add-main { min-height: 152px; }
+  .add-cat-card { min-height: 152px; }
+  .add-cat-card .cat-carousel { flex-basis: 104px; min-height: 104px; }
+  .cat-pages-track { height: 104px; }
+  .cat-page { grid-template-rows: repeat(2, 50px); grid-auto-rows: 50px; }
+  .cat-page .cat-item .cat-icon { width: 32px; height: 32px; }
+  .add-transfer-card { flex-basis: 126px; min-height: 126px; }
   .keypad-row .keypad button { padding: 6px 0; }
 }
 
