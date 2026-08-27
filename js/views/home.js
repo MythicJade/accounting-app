@@ -3,7 +3,7 @@
 // / 日期分组流水（每组头带收支小计，每笔独立卡片 + 彩色实心图标 + 渠道小标签）/ 右下 FAB
 import { listTransactions, monthlySummary, getBudget, setupStarterData } from '../store.js';
 import { listCategories } from '../categories.js';
-import { getAccountsMap } from '../accounts.js';
+import { getAccountsMap, listAccounts } from '../accounts.js';
 import { formatMoney, dateWithWeekday } from '../format.js';
 import { el, toast } from '../ui.js';
 import { router } from '../router.js';
