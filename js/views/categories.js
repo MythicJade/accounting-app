@@ -1,7 +1,7 @@
 // js/views/categories.js — 分类管理页面（支出/收入分类 CRUD + 图标颜色）
 import { listCategories, addCategory, updateCategory, deleteCategory, archiveCategory, restoreCategory } from '../categories.js';
 import { toast, confirmDialog, showModal, el } from '../ui.js';
-import { CATEGORY_ICON_OPTIONS, categoryIconNode, resolveCategoryIconKey } from '../category-icons.js';
+import { CATEGORY_ICON_OPTIONS, categoryIconNode, resolveCategoryIconKey, ICON_GROUPS, ICON_META } from '../category-icons.js';
 
 const COLORS = ['#F36F62','#C77C86','#A56C8E','#5BC0D0','#26B982','#15A6A1','#93BF38','#FFC62E','#F39B35','#6677E8'];
 
@@ -112,18 +112,52 @@ export async function renderCategories(mount) {
     }
     nameInput.addEventListener('input', updatePreview);
 
-    const iconGrid = el('div', { class: 'cat-grid category-icon-grid' });
+    // v2.1.2 图标选择器：分组展示 + 关键字搜索
+    const iconSearch = el('input', {
+      class: 'input icon-search-input',
+      type: 'text',
+      placeholder: '搜索图标，如：咖啡 / 宠物 / 旅行',
+      maxlength: 12,
+      'aria-label': '搜索图标'
+    });
+    const iconSection = el('div', { class: 'category-icon-section', role: 'listbox', 'aria-label': '图标列表' });
+
+    function buildIconNode(option) {
+      return el('button', { class: 'cat-item' + (selectedIcon === option.token ? ' selected' : ''), type: 'button', 'aria-label': `选择${option.label}图标`, onclick: () => { selectedIcon = option.token; renderIcons(); } }, [
+        el('div', { class: 'cat-icon category-line-icon' }, [categoryIconNode({ icon: option.token, name: option.label }, { size: 23 })]),
+        el('div', { class: 'cat-name', text: option.label })
+      ]);
+    }
     function renderIcons() {
-      iconGrid.innerHTML = '';
-      CATEGORY_ICON_OPTIONS.forEach(option => {
-        const item = el('button', { class: 'cat-item' + (selectedIcon === option.token ? ' selected' : ''), type: 'button', 'aria-label': `选择${option.label}图标`, onclick: () => { selectedIcon = option.token; renderIcons(); } }, [
-          el('div', { class: 'cat-icon category-line-icon' }, [categoryIconNode({ icon: option.token, name: option.label }, { size: 23 })]),
-          el('div', { class: 'cat-name', text: option.label })
-        ]);
-        iconGrid.appendChild(item);
-      });
+      const q = iconSearch.value.trim();
+      iconSection.innerHTML = '';
+      if (q) {
+        // 搜索模式：跨分组平铺匹配结果
+        const matches = CATEGORY_ICON_OPTIONS.filter(o => o.label.includes(q));
+        if (matches.length) {
+          const grid = el('div', { class: 'cat-grid category-icon-grid category-icon-grid--flat' });
+          matches.forEach(option => grid.appendChild(buildIconNode(option)));
+          iconSection.appendChild(grid);
+        } else {
+          iconSection.appendChild(el('div', { class: 'icon-search-empty' }, [
+            el('p', { text: `没有匹配「${q}」的图标` })
+          ]));
+        }
+      } else {
+        ICON_GROUPS.forEach(group => {
+          const sec = el('div', { class: 'icon-group' });
+          sec.appendChild(el('div', { class: 'icon-group-label', text: group.label }));
+          const grid = el('div', { class: 'cat-grid category-icon-grid' });
+          group.keys.forEach(key => {
+            grid.appendChild(buildIconNode({ key, token: ICON_META[key].token, label: ICON_META[key].label }));
+          });
+          sec.appendChild(grid);
+          iconSection.appendChild(sec);
+        });
+      }
       updatePreview();
     }
+    iconSearch.addEventListener('input', () => renderIcons());
     renderIcons();
 
     const colorRow = el('div', { class: 'category-color-row' });
@@ -142,7 +176,8 @@ export async function renderCategories(mount) {
       el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '类型' }),
       typeRow,
       el('div', { class: 'category-form-label', text: '选择图标' }),
-      iconGrid,
+      iconSearch,
+      iconSection,
       el('div', { class: 'category-form-label', text: '选择颜色' }),
       colorRow
     );

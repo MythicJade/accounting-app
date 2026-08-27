@@ -1537,15 +1537,34 @@ body.route-add .view {
 }
 .amount-compact .value { font-size: 32px; }
 .amount-number { margin-top: 0; }
-.add-main { flex: 1 1 auto; min-height: 174px; overflow: visible; }
+.add-main { flex: 1 1 auto; min-height: 150px; overflow: hidden; }
+/* v2.1.2: 分类卡/转账卡弹性占据中部全部剩余空间，
+   轮播在卡内垂直居中 —— 消除「选择分类与数字键盘之间的大间隔」；
+   转账卡不再固定 148px 高度，两个账户字段始终完整显示 */
 .add-cat-card,
-.add-transfer-card { padding: 8px 7px 5px; border-radius: 18px; }
-.add-cat-card { flex: 0 0 auto; min-height: 174px; }
-.add-transfer-card { flex: 0 0 148px; min-height: 148px; }
-.add-cat-card { overflow: hidden; }
-.add-section-label { padding: 0 8px 3px; font-size: 10px; }
-.add-cat-card .cat-carousel { flex: 0 0 124px; min-height: 124px; }
-.cat-pages-track { height: 124px; }
+.add-transfer-card {
+  padding: 10px 10px 6px;
+  border-radius: 18px;
+  flex: 1 1 auto;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.add-section-label { padding: 0 8px 3px; font-size: 10px; flex-shrink: 0; }
+.add-cat-card .cat-carousel {
+  flex: 1 1 auto;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.cat-pages-track { height: auto; }
+.cat-page { align-content: center; }
+.add-cat-card .cat-pagination { flex-shrink: 0; }
+/* 转账模式：上下账户字段在可用空间内均匀分布，卡片完整可见 */
+.add-transfer-card { justify-content: space-evenly; gap: 4px; }
+.add-transfer-card .field { margin-bottom: 0; }
 .cat-page {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   grid-template-rows: repeat(2, 60px);
@@ -1605,13 +1624,12 @@ body.route-add .view {
 @media (max-height: 660px) {
   .amount-display.amount-compact { min-height: 72px; padding-top: 7px; padding-bottom: 7px; }
   .amount-compact .value { font-size: 28px; }
-  .add-main { min-height: 152px; }
-  .add-cat-card { min-height: 152px; }
-  .add-cat-card .cat-carousel { flex-basis: 104px; min-height: 104px; }
-  .cat-pages-track { height: 104px; }
+  .add-main { min-height: 132px; }
+  .add-cat-card,
+  .add-transfer-card { min-height: 126px; }
+  .add-cat-card .cat-carousel { min-height: 84px; }
   .cat-page { grid-template-rows: repeat(2, 50px); grid-auto-rows: 50px; }
   .cat-page .cat-item .cat-icon { width: 32px; height: 32px; }
-  .add-transfer-card { flex-basis: 126px; min-height: 126px; }
   .keypad-row .keypad button { padding: 6px 0; }
 }
 
@@ -1623,3 +1641,42 @@ body.route-add .view {
     scroll-behavior: auto !important;
   }
 }
+
+/* ===== v2.1.2 图标选择器：分组 + 搜索 ===== */
+.icon-search-input {
+  width: 100%;
+  min-height: 38px;
+  margin: 0 0 7px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--fill-1);
+  font-size: 13px;
+  box-shadow: none !important;
+}
+.category-icon-section {
+  max-height: 238px;
+  overflow-y: auto;
+  padding: 3px;
+  border-radius: 16px;
+  background: var(--fill-1);
+}
+.category-icon-section,
+.icon-search-input { scrollbar-width: none; -ms-overflow-style: none; }
+.category-icon-section::-webkit-scrollbar,
+.icon-search-input::-webkit-scrollbar { display: none; }
+.category-icon-section .category-icon-grid {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px 2px;
+  max-height: none;
+  margin: 0;
+  padding: 2px;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+.icon-group { padding-bottom: 3px; }
+.icon-group-label { padding: 7px 4px 4px; color: var(--text-3); font-size: 10.5px; letter-spacing: .05em; }
+.category-icon-section .category-icon-grid .cat-item { padding: 5px 1px; }
+.icon-search-empty { display: flex; align-items: center; justify-content: center; min-height: 88px; }
+.icon-search-empty p { color: var(--text-3); font-size: 13px; }

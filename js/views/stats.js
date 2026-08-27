@@ -25,6 +25,9 @@ let _state = {
   customEnd: null
 };
 
+// 最近一次折线图数据缓存（用于滑动跟手的局部重绘）
+let _lastLineData = [];
+
 function ensureRange() {
   if (!_state.range) {
     _state.range = getRange(_state.period);
@@ -192,9 +195,9 @@ export async function renderStats(mount) {
     pieHint
   ]);
 
-  const lineCanvas = el('canvas', { role: 'img', tabindex: '0', 'aria-label': '收支趋势图表' });
+  const lineCanvas = el('canvas', { role: 'img', tabindex: '0', 'aria-label': '收支趋势图表，左右滑动查看每日金额' });
   lineCanvas.style.height = '220px';
-  const lineHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '点击折线查看具体金额' });
+  const lineHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '在图上滑动即可查看对应日期金额' });
   const lineCard = el('section', { class: 'card chart-card' }, [
     el('div', { class: 'card-title section-heading', text: '整体趋势' }),
     lineCanvas,
@@ -213,6 +216,23 @@ export async function renderStats(mount) {
     el('p', { text: '看清每一笔钱的去向' })
   ]);
   mount.append(statsIntro, periodTabs, rangeNav, customPanel, accountChips, statsOverview, lineCard, pieCard, rankCard);
+
+  // 折线图局部重绘：滑动（scrub）与点选只刷新画布，不触发整页 render
+  function redrawLineChart() {
+    drawLineChart(lineCanvas, _lastLineData, {
+      color: _state.view === 'income' ? '#35C98A' : '#FFC62E',
+      selected: _state.selectedPoint,
+      onScrub: (idx) => {
+        _state.selectedPoint = idx;
+        redrawLineChart();
+      },
+      onSelect: (idx) => {
+        _state.selectedPoint = idx;
+        redrawLineChart();
+      },
+      valueFormatter: (v) => formatMoney(v)
+    });
+  }
 
   // Render function (re-renders in place)
   async function render() {
@@ -313,15 +333,9 @@ export async function renderStats(mount) {
     if (_state.selectedPoint != null && _state.selectedPoint >= lineData.length) {
       _state.selectedPoint = null;
     }
-    drawLineChart(lineCanvas, lineData, {
-      color: _state.view === 'income' ? '#35C98A' : '#FFC62E',
-      selected: _state.selectedPoint,
-      onSelect: (idx) => {
-        _state.selectedPoint = (_state.selectedPoint === idx) ? null : idx;
-        render();
-      },
-      valueFormatter: (v) => formatMoney(v)
-    });
+    // 缓存折线数据：滑动/点击图表时仅局部重绘，不再整页刷新
+    _lastLineData = lineData;
+    redrawLineChart();
 
     // Rank list
     rankList.innerHTML = '';
