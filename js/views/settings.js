@@ -1,5 +1,6 @@
 // js/views/settings.js — settings: export/import/clear + about
-import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions } from '../store.js';
+import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions, getAllTransactions, getAssetsSummary, monthlySummary, getBudget } from '../store.js';
+import { formatMoney, currentMonthKey } from '../format.js';
 import { exportToExcel, previewExcelImport, importParsedData } from '../excel-io.js';
 import { toast, confirmDialog, showModal, promptDialog, el } from '../ui.js';
 import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
@@ -9,89 +10,121 @@ import { isNativeApp, shareTextFile } from '../native-bridge.js';
 import { THEMES, getThemeKey, setThemeKey } from '../theme.js';
 
 export async function renderSettings(mount) {
+  // ===== v2.3.0 用户头部 + 功能台数据 =====
   const count = await countTransactions();
+  let streakDays = 1;
+  try {
+    const all = await getAllTransactions();
+    if (all.length) {
+      let minDate = null;
+      all.forEach(t => { if (!minDate || t.date < minDate) minDate = t.date; });
+      const d0 = new Date(minDate + 'T00:00:00');
+      streakDays = Math.max(1, Math.floor((Date.now() - d0.getTime()) / 86400000) + 1);
+    }
+  } catch (e) { /* ignore */ }
+  const assets = await getAssetsSummary();
+  const mk = currentMonthKey();
+  const [monthSum, monthBudget] = await Promise.all([monthlySummary(mk, null), getBudget(mk)]);
+  const goalLimit = monthBudget ? monthBudget.limit : 0;
+  const goalPct = goalLimit > 0 ? Math.min(100, Math.round(monthSum.expense / goalLimit * 100)) : 0;
 
-  const settingsIntro = el('header', { class: 'settings-intro' }, [
-    el('div', { class: 'settings-avatar', 'aria-hidden': 'true', text: '📒' }),
-    el('div', {}, [
-      el('h1', { text: '我的' }),
-      el('p', { text: '数据只属于你，也只保存在本机' })
+  const profileHead = el('header', { class: 'profile-head' }, [
+    el('div', { class: 'profile-avatar', 'aria-hidden': 'true', text: '📒' }),
+    el('div', { class: 'profile-main' }, [
+      el('div', { class: 'profile-name' }, [
+        document.createTextNode('我的记账'),
+        el('span', { class: 'profile-badge', text: 'v' + APP_VERSION })
+      ]),
+      el('div', { class: 'profile-streak' }, [
+        document.createTextNode('坚持记账的第 '),
+        el('b', { class: 'streak-num', text: String(streakDays) }),
+        document.createTextNode(` 天 · 已记 ${count} 笔`)
+      ])
+    ]),
+    el('button', { class: 'profile-gear', type: 'button', 'aria-label': '关于', onclick: onShowAbout }, [
+      el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/>' })
     ])
   ]);
 
-  // Data group
-  const dataGroup = el('div', { class: 'setting-list' }, [
-    el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/budget' }, [
-      el('div', { class: 'icon', text: '📊' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '预算管理' }),
-        el('div', { class: 'text-sm text-3', text: '设置月度预算上限与历史' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
+  // 快捷功能 4×2 图标格
+  const quickDefs = [
+    { icon: '📤', label: '导出数据', run: onExport },
+    { icon: '📥', label: '导入数据', run: onImport },
+    { icon: '📊', label: 'Excel导出', run: onExportExcel },
+    { icon: '📑', label: 'Excel导入', run: onImportExcel },
+    { icon: '🎯', label: '预算管理', run: () => { location.hash = '#/budget'; } },
+    { icon: '💳', label: '账户管理', run: () => { location.hash = '#/accounts'; } },
+    { icon: '🏷️', label: '分类管理', run: () => { location.hash = '#/categories'; } },
+    { icon: '📱', label: '安装/帮助', run: onShowInstallGuide }
+  ];
+  const quickCard = el('section', { class: 'card quick-card' }, [
+    el('div', { class: 'quick-grid' },
+      quickDefs.map(d => el('button', { class: 'quick-tile', type: 'button', onclick: d.run }, [
+        el('span', { class: 'quick-icon', 'aria-hidden': 'true', text: d.icon }),
+        el('span', { class: 'lbl', text: d.label })
+      ]))
+    )
+  ]);
+
+  // 净资产总览卡
+  const naCard = el('section', { class: 'card na-card' }, [
+    el('div', { class: 'na-main' }, [
+      el('div', { class: 'na-label', text: '净资产' }),
+      el('div', { class: 'na-value', text: formatMoney(assets.netAssets) }),
+      el('div', { class: 'na-sub' }, [
+        el('span', { text: '资产 ' + formatMoney(assets.totalAssets) }),
+        el('span', { class: 'neg', text: '负债 ' + formatMoney(assets.totalLiabilities) })
+      ])
     ]),
-    el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/accounts' }, [
-      el('div', { class: 'icon', text: '💳' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '账户管理' }),
-        el('div', { class: 'text-sm text-3', text: '多账户分开管理 + 账户间转账' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
-    ]),
-    el('button', { class: 'setting-item', type: 'button', onclick: () => location.hash = '#/categories' }, [
-      el('div', { class: 'icon', text: '🏷️' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '分类管理' }),
-        el('div', { class: 'text-sm text-3', text: '自定义支出/收入分类、图标与颜色' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
-    ]),
-    el('button', { class: 'setting-item', type: 'button', onclick: onExport }, [
-      el('div', { class: 'icon', text: '📤' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '导出备份' }),
-        el('div', { class: 'text-sm text-3', text: '可选密码加密，保存到本地' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
-    ]),
-    el('button', { class: 'setting-item', type: 'button', onclick: onImport }, [
-      el('div', { class: 'icon', text: '📥' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '导入备份' }),
-        el('div', { class: 'text-sm text-3', text: '从 JSON 文件恢复数据' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
+    el('div', { class: 'na-div', 'aria-hidden': 'true' }),
+    el('a', { class: 'na-link', href: '#/assets' }, [
+      el('span', { class: 'ic', 'aria-hidden': 'true', text: '🏦' }),
+      el('span', { text: '查看总资产' })
     ])
   ]);
 
-  // Excel group
-  const excelGroup = el('div', { class: 'setting-list mt-16' }, [
-    el('button', { class: 'setting-item', type: 'button', onclick: onExportExcel }, [
-      el('div', { class: 'icon', text: '📊' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '导出 Excel' }),
-        el('div', { class: 'text-sm text-3', text: '含流水、账户和分类，全程离线生成' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
+  // 本月预算完成度卡
+  const goalCard = el('section', { class: 'card goal-card' }, [
+    el('div', { class: 'goal-top' }, [
+      el('span', { class: 'goal-label', text: goalLimit > 0 ? '本月预算完成度' : '本月预算' }),
+      el('span', { class: 'goal-pct', text: goalLimit > 0 ? `${goalPct}%` : '未设置' })
     ]),
-    el('button', { class: 'setting-item', type: 'button', onclick: onImportExcel }, [
-      el('div', { class: 'icon', text: '📑' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: '导入 Excel' }),
-        el('div', { class: 'text-sm text-3', text: '从 .xlsx 安全合并，全程离线解析' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
+    el('div', { class: 'goal-bar' }, [
+      el('i', { class: goalPct >= 100 ? 'over' : '', style: `width:${goalLimit > 0 ? goalPct : 0}%` })
     ]),
-    el('button', { class: 'setting-item', type: 'button', onclick: onShowExcelSpec }, [
-      el('div', { class: 'icon', text: 'ℹ️' }),
-      el('div', { class: 'text' }, [
-        el('div', { text: 'Excel 格式说明' }),
-        el('div', { class: 'text-sm text-3', text: '查看支持的列定义' })
-      ]),
-      el('div', { class: 'arrow', text: '›' })
-    ])
+    el('a', { class: 'goal-link', href: '#/budget', text: goalLimit > 0 ? `已消费 ${formatMoney(monthSum.expense)} / 预算 ${formatMoney(goalLimit)} · 管理 ›` : '设置预算，让消费更有数 ›' })
   ]);
 
-  const dataStats = el('p', { class: 'text-sm text-3 center mt-8', text: '当前已记录 ' + count + ' 笔流水' });
+  // 功能管理：首页显示开关（行内开关，设置即时生效于下次进入首页）
+  const prefGet = (k) => { try { return localStorage.getItem(k) !== '0'; } catch (e) { return true; } };
+  const prefSet = (k, v) => { try { localStorage.setItem(k, v ? '1' : '0'); } catch (e) { /* ignore */ } };
+  const switchDefs = [
+    { key: 'pref-home-gauge', title: '首页预算仪表', desc: '关闭后首页隐藏半圆预算卡' },
+    { key: 'pref-home-wallet', title: '首页资产入口', desc: '关闭后隐藏顶栏右侧钱包按钮' }
+  ];
+  const switchCard = el('section', { class: 'card switch-card' }, [
+    el('div', { class: 'card-title section-heading', text: '功能管理' }),
+    ...switchDefs.map(d => {
+      const toggle = el('button', {
+        class: 'sw-toggle', type: 'button', role: 'switch',
+        'aria-checked': String(prefGet(d.key)),
+        'aria-label': d.title,
+        onclick: () => {
+          const next = toggle.getAttribute('aria-checked') !== 'true';
+          toggle.setAttribute('aria-checked', String(next));
+          prefSet(d.key, next);
+        }
+      });
+      return el('div', { class: 'sw-row' }, [
+        el('div', { class: 'sw-main' }, [
+          el('div', { class: 'sw-title', text: d.title }),
+          el('div', { class: 'sw-desc', text: d.desc })
+        ]),
+        toggle
+      ]);
+    })
+  ]);
+
 
   // ===== v2.2.0 外观（主题选择）：鎏金暖阳 / 青屿 / 靛夜星辉 / 暗夜模式 =====
   const appearanceGrid = el('div', { class: 'theme-grid', role: 'radiogroup', 'aria-label': '选择主题' });
@@ -143,6 +176,14 @@ export async function renderSettings(mount) {
       ]),
       el('div', { class: 'arrow', text: '›' })
     ]),
+    el('button', { class: 'setting-item', type: 'button', onclick: onShowExcelSpec }, [
+      el('div', { class: 'icon', text: 'ℹ️' }),
+      el('div', { class: 'text' }, [
+        el('div', { text: 'Excel 格式说明' }),
+        el('div', { class: 'text-sm text-3', text: '查看支持的列定义' })
+      ]),
+      el('div', { class: 'arrow', text: '›' })
+    ]),
     el('button', { class: 'setting-item', type: 'button', onclick: onShowAbout }, [
       el('div', { class: 'icon', text: 'ℹ️' }),
       el('div', { class: 'text', text: '关于' }),
@@ -156,7 +197,7 @@ export async function renderSettings(mount) {
     el('div', { class: 'text-sm', text: '默认纯本地运行 · 备份可密码加密' })
   ]);
 
-  mount.append(settingsIntro, appearanceCard, dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
+  mount.append(profileHead, appearanceCard, quickCard, naCard, goalCard, switchCard, dangerGroup, helpGroup, about);
 
   // Hidden file input for import
   const fileInput = document.createElement('input');

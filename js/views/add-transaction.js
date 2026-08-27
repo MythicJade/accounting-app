@@ -1,13 +1,14 @@
-// js/views/add-transaction.js — add/edit transaction form
-// 固定不可滑动布局：顶部金额/类型，中部分类轮播，底部字段 + 固定数字键盘
+// js/views/add-transaction.js — v2.3.0 沉浸式记一笔
+// 排版对齐参考设计：下划线类型 Tabs / 深色金额条（分类+金额一体）/ 瓷砖分类网格 /
+// 账户胶囊选择 / 内联元信息行（账本·日期·备注）/ 4 列键盘（+ − 连续运算、再记、完成）
 import { addTransaction, updateTransaction, getTransaction, deleteTransaction, transferMoney } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
 import { todayStr } from '../format.js';
-import { toast, confirmDialog, vibrate, el } from '../ui.js';
+import { toast, confirmDialog, vibrate, el, promptDialog } from '../ui.js';
 import { categoryIconNode } from '../category-icons.js';
 
-const CATS_PER_PAGE = 10; // 5 列 × 2 行，接近原生记账应用的分类密度
+const CATS_PER_PAGE = 10; // 5 列 × 2 行瓷砖
 
 export async function renderAddTransaction(mount, params = {}) {
   const editId = params.id ? Number(params.id) : null;
@@ -26,7 +27,7 @@ export async function renderAddTransaction(mount, params = {}) {
   // state
   const state = {
     type: editing ? editing.type : 'expense',
-    amount: editing ? String(editing.amount) : '',
+    expr: editing ? String(editing.amount) : '',   // 支持 + − 的表达式
     categoryId: editing ? editing.categoryId : null,
     note: editing ? editing.note : '',
     date: editing ? editing.date : todayStr(),
@@ -38,371 +39,396 @@ export async function renderAddTransaction(mount, params = {}) {
   let cats = allCats.filter(c => c.type === state.type);
   if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
 
-  // === Build DOM ===
-  // 返回按钮
+  // ===== 顶部：返回 + 下划线类型 Tabs +（删除） =====
   const backBtn = el('button', { class: 'back add-back', 'aria-label': '返回首页', onclick: () => location.hash = '#/' }, [
     el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
   ]);
-
-  // Type tabs (支出 / 收入 / 转账) — 与返回按钮同处顶部一行
   const typeBtns = {};
-  const typeTabs = el('div', { class: 'type-tabs type-tabs-3 add-type-tabs' }, [
-    typeBtns.expense = el('button', { class: state.type === 'expense' ? 'active expense' : '', text: '支出', onclick: () => setType('expense') }),
-    typeBtns.income = el('button', { class: state.type === 'income' ? 'active income' : '', text: '收入', onclick: () => setType('income') }),
-    typeBtns.transfer = el('button', { class: state.type === 'transfer' ? 'active transfer' : '', text: '转账', onclick: () => setType('transfer') })
+  const segTabs = el('div', { class: 'seg-underline', role: 'tablist' }, [
+    typeBtns.expense = el('button', { class: state.type === 'expense' ? 'active' : '', text: '支出', onclick: () => setType('expense') }),
+    typeBtns.income = el('button', { class: state.type === 'income' ? 'active' : '', text: '收入', onclick: () => setType('income') }),
+    typeBtns.transfer = el('button', { class: state.type === 'transfer' ? 'active' : '', text: '转账', onclick: () => setType('transfer') })
+  ]);
+  const topRow = el('div', { class: 'add-top-row' }, [
+    backBtn,
+    segTabs,
+    editId
+      ? el('button', { class: 'btn-text danger add-del-btn', onclick: () => onDelete(editId) }, [el('span', { text: '删除' })])
+      : el('span', { class: 'add-right-spacer' })
   ]);
 
-  // 编辑模式右侧放删除按钮，否则占位保持对称
-  const rightSlot = editId
-    ? el('button', { class: 'btn-text danger add-del-btn', onclick: () => onDelete(editId) }, [el('span', { text: '删除' })])
-    : el('span', { class: 'add-right-spacer' });
+  // ===== 深色金额条：分类 + 金额一体 =====
+  const amtIcon = el('span', { class: 'amt-cat', 'aria-hidden': 'true' });
+  const amtName = el('span', { class: 'amt-name' });
+  const amtVal = el('span', { class: 'amt-val is-empty', text: '0' });
+  const amtBar = el('div', { class: 'amt-bar' }, [amtIcon, amtName, amtVal]);
 
-  // 顶部一行：返回 + 类型 tabs + （删除）
-  const topRow = el('div', { class: 'add-top-row' }, [backBtn, typeTabs, rightSlot]);
+  function refreshAmtBar() {
+    if (state.type === 'transfer') {
+      amtIcon.style.background = 'var(--transfer)';
+      amtIcon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 8h9l-2.6-2.6M17.5 16h-9l2.6 2.6"/></svg>';
+      amtName.textContent = '转账';
+    } else {
+      const cat = cats.find(c => c.id === state.categoryId);
+      amtIcon.style.background = cat ? cat.color : 'var(--text-3)';
+      amtIcon.innerHTML = '';
+      if (cat) amtIcon.appendChild(categoryIconNode(cat, { size: 21 }));
+      amtName.textContent = cat ? cat.name : '选择分类';
+    }
+    amtVal.textContent = state.expr || '0';
+    amtVal.className = 'amt-val' + (state.expr ? '' : ' is-empty');
+  }
 
-  // Amount display（键盘固定显示，无需点击弹窗）
-  const amountValue = el('span', { class: 'value ' + (state.amount ? '' : 'is-empty'), text: state.amount || '0.00' });
-  const amountDisplay = el('div', { class: 'amount-display amount-compact' }, [
-    el('span', { class: 'amount-caption', text: editId ? '修改金额' : '记账金额' }),
-    el('div', { class: 'amount-number' }, [
-      el('span', { class: 'currency', text: '¥' }),
-      amountValue
-    ])
-  ]);
-
-  // ===== Category carousel (5 cols × 2 rows per page, horizontal swipe) =====
-  const catCarousel = el('div', { class: 'cat-carousel' });
-  const catTrack = el('div', { class: 'cat-pages-track' });
-  catCarousel.appendChild(catTrack);
-  const catDots = el('div', { class: 'cat-dots' });
+  // ===== 分类瓷砖（5 列 × 2 行，横向滑页） =====
+  const tileSwiper = el('div', { class: 'tile-swiper' });
+  const tileTrack = el('div', { class: 'tile-track' });
+  tileSwiper.appendChild(tileTrack);
+  const tileDots = el('div', { class: 'cat-dots' });
   let currentPageIdx = Math.max(0, Math.floor(Math.max(0, cats.findIndex(c => c.id === state.categoryId)) / CATS_PER_PAGE));
-  const catPageLabel = el('span', { class: 'cat-page-label', 'aria-live': 'polite', text: '1/1' });
-  const catPrevButton = el('button', { class: 'cat-page-btn', type: 'button', 'aria-label': '上一组分类', text: '‹', onclick: () => goCategoryPage(currentPageIdx - 1) });
-  const catNextButton = el('button', { class: 'cat-page-btn', type: 'button', 'aria-label': '下一组分类', text: '›', onclick: () => goCategoryPage(currentPageIdx + 1) });
-  const catPagination = el('div', { class: 'cat-pagination' }, [catPrevButton, catDots, catPageLabel, catNextButton]);
 
-  function renderCats() {
-    catTrack.innerHTML = '';
-    catDots.innerHTML = '';
+  function renderTiles() {
+    tileTrack.innerHTML = '';
+    tileDots.innerHTML = '';
     if (cats.length === 0) {
-      const empty = el('div', { class: 'empty', style: 'padding:16px 8px;' }, [
+      tileTrack.appendChild(el('div', { class: 'empty', style: 'padding:16px 8px;' }, [
         el('p', { text: '暂无' + (state.type === 'income' ? '收入' : '支出') + '分类' }),
         el('button', { class: 'btn', style: 'margin-top:8px;', onclick: () => location.hash = '#/categories' }, [el('span', { text: '去创建分类' })])
-      ]);
-      catTrack.appendChild(empty);
-      catPagination.hidden = true;
+      ]));
+      tileDots.style.display = 'none';
       return;
     }
-    const itemsWithAdd = cats.concat([{ _isAdd: true }]);
-    const pageCount = Math.ceil(itemsWithAdd.length / CATS_PER_PAGE);
+    const items = cats.concat([{ _isManage: true }]);
+    const pageCount = Math.ceil(items.length / CATS_PER_PAGE);
     for (let p = 0; p < pageCount; p++) {
-      const pageItems = itemsWithAdd.slice(p * CATS_PER_PAGE, (p + 1) * CATS_PER_PAGE);
-      const page = el('div', { class: 'cat-page' });
-      pageItems.forEach(c => {
-        let item;
-        if (c._isAdd) {
-          item = el('button', { class: 'cat-item', type: 'button', onclick: () => location.hash = '#/categories' }, [
-            el('div', { class: 'cat-icon cat-icon-add' }, [
+      const page = el('div', { class: 'tile-page' });
+      items.slice(p * CATS_PER_PAGE, (p + 1) * CATS_PER_PAGE).forEach(c => {
+        let tile;
+        if (c._isManage) {
+          tile = el('button', { class: 'cat-tile dashed', type: 'button', onclick: () => location.hash = '#/categories' }, [
+            el('span', { class: 'cube' }, [
               el('svg', { viewBox: '0 0 24 24', width: '22', height: '22', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<path d="M12 5v14M5 12h14"/>' })
             ]),
-            el('div', { class: 'cat-name', text: '管理' })
+            el('span', { class: 't-label', text: '管理' })
           ]);
         } else {
-          item = el('button', { class: 'cat-item' + (state.categoryId === c.id ? ' selected' : ''), type: 'button', onclick: () => selectCat(c.id) }, [
-            el('div', { class: 'cat-icon', style: `background:${c.color}18;color:${c.color}` }, [categoryIconNode(c, { size: 23 })]),
-            el('div', { class: 'cat-name', text: c.name })
+          tile = el('button', {
+            class: 'cat-tile' + (state.categoryId === c.id ? ' selected' : ''), type: 'button',
+            'aria-label': c.name,
+            onclick: () => { state.categoryId = c.id; vibrate(8); renderTiles(); refreshAmtBar(); }
+          }, [
+            el('span', { class: 'cube' }, [categoryIconNode(c, { size: 24 })]),
+            el('span', { class: 't-label', text: c.name })
           ]);
         }
-        page.appendChild(item);
+        page.appendChild(tile);
       });
-      catTrack.appendChild(page);
-      const dot = el('button', { class: 'cat-dot' + (p === currentPageIdx ? ' active' : ''), type: 'button', 'aria-label': `第 ${p + 1} 组分类`, onclick: () => goCategoryPage(p) });
-      catDots.appendChild(dot);
+      tileTrack.appendChild(page);
+      const dot = el('button', {
+        class: 'cat-dot' + (p === currentPageIdx ? ' active' : ''), type: 'button',
+        'aria-label': `第 ${p + 1} 组分类`,
+        onclick: () => goTilePage(p)
+      });
+      tileDots.appendChild(dot);
     }
     currentPageIdx = Math.min(currentPageIdx, pageCount - 1);
-    catPagination.hidden = false;
-    catDots.style.display = pageCount > 1 ? 'flex' : 'none';
-    updateTrackPosition();
+    tileDots.style.display = pageCount > 1 ? 'flex' : 'none';
+    updateTilePosition();
   }
 
-  function updateTrackPosition() {
-    const pages = catTrack.children;
+  function updateTilePosition() {
+    const pages = tileTrack.children;
     if (pages.length === 0) return;
-    const carouselWidth = catCarousel.clientWidth || 320;
-    catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth}px)`;
-    Array.from(catDots.children).forEach((d, i) => {
+    const w = tileSwiper.clientWidth || 320;
+    tileTrack.style.transform = `translateX(${-currentPageIdx * w}px)`;
+    Array.from(tileDots.children).forEach((d, i) => {
       d.className = 'cat-dot' + (i === currentPageIdx ? ' active' : '');
     });
-    catPageLabel.textContent = `${currentPageIdx + 1}/${pages.length}`;
-    catPrevButton.disabled = currentPageIdx <= 0;
-    catNextButton.disabled = currentPageIdx >= pages.length - 1;
+  }
+  function goTilePage(next) {
+    const last = Math.max(0, tileTrack.children.length - 1);
+    currentPageIdx = Math.max(0, Math.min(last, next));
+    tileTrack.style.transition = 'transform .25s ease';
+    updateTilePosition();
   }
 
-  function goCategoryPage(nextPage) {
-    const lastPage = Math.max(0, catTrack.children.length - 1);
-    currentPageIdx = Math.max(0, Math.min(lastPage, nextPage));
-    catTrack.style.transition = 'transform .25s ease';
-    updateTrackPosition();
-  }
-
-  // 拖动/滑动切换页面
-  let dragStartX = 0;
-  let dragDelta = 0;
-  let isDragging = false;
-  catCarousel.addEventListener('touchstart', (e) => {
-    isDragging = true;
-    dragStartX = e.touches[0].clientX;
-    dragDelta = 0;
-    catTrack.style.transition = 'none';
+  // 瓷砖横滑
+  let dragStartX = 0, dragDelta = 0, isDragging = false;
+  tileSwiper.addEventListener('touchstart', (e) => {
+    isDragging = true; dragStartX = e.touches[0].clientX; dragDelta = 0;
+    tileTrack.style.transition = 'none';
   }, { passive: true });
-  catCarousel.addEventListener('touchmove', (e) => {
+  tileSwiper.addEventListener('touchmove', (e) => {
     if (!isDragging) return;
     dragDelta = e.touches[0].clientX - dragStartX;
-    const carouselWidth = catCarousel.clientWidth || 320;
-    catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth + dragDelta}px)`;
+    const w = tileSwiper.clientWidth || 320;
+    tileTrack.style.transform = `translateX(${-currentPageIdx * w + dragDelta}px)`;
   }, { passive: true });
-  catCarousel.addEventListener('touchend', () => {
+  tileSwiper.addEventListener('touchend', () => {
     if (!isDragging) return;
     isDragging = false;
-    catTrack.style.transition = 'transform .25s ease';
-    const carouselWidth = catCarousel.clientWidth || 320;
-    const threshold = carouselWidth * 0.18;
-    const pageCount = catTrack.children.length;
-    if (dragDelta < -threshold && currentPageIdx < pageCount - 1) {
-      currentPageIdx++;
-    } else if (dragDelta > threshold && currentPageIdx > 0) {
-      currentPageIdx--;
-    }
-    updateTrackPosition();
-  });
-  // 鼠标拖动支持（桌面端调试）
-  let mouseStartX = 0;
-  catCarousel.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    mouseStartX = e.clientX;
-    dragDelta = 0;
-    catTrack.style.transition = 'none';
-    e.preventDefault();
-  });
+    tileTrack.style.transition = 'transform .25s ease';
+    const w = tileSwiper.clientWidth || 320;
+    const threshold = w * 0.18;
+    const pageCount = tileTrack.children.length;
+    if (dragDelta < -threshold && currentPageIdx < pageCount - 1) currentPageIdx++;
+    else if (dragDelta > threshold && currentPageIdx > 0) currentPageIdx--;
+    updateTilePosition();
+  }, { passive: true });
+  // 桌面拖动
+  let mStart = 0;
+  tileSwiper.addEventListener('mousedown', (e) => { isDragging = true; mStart = e.clientX; dragDelta = 0; tileTrack.style.transition = 'none'; e.preventDefault(); });
   const onMouseMove = (e) => {
     if (!isDragging) return;
-    dragDelta = e.clientX - mouseStartX;
-    const carouselWidth = catCarousel.clientWidth || 320;
-    catTrack.style.transform = `translateX(${-currentPageIdx * carouselWidth + dragDelta}px)`;
+    dragDelta = e.clientX - mStart;
+    const w = tileSwiper.clientWidth || 320;
+    tileTrack.style.transform = `translateX(${-currentPageIdx * w + dragDelta}px)`;
   };
   const onMouseUp = () => {
     if (!isDragging) return;
     isDragging = false;
-    catTrack.style.transition = 'transform .25s ease';
-    const carouselWidth = catCarousel.clientWidth || 320;
-    const threshold = carouselWidth * 0.18;
-    const pageCount = catTrack.children.length;
-    if (dragDelta < -threshold && currentPageIdx < pageCount - 1) {
-      currentPageIdx++;
-    } else if (dragDelta > threshold && currentPageIdx > 0) {
-      currentPageIdx--;
-    }
-    updateTrackPosition();
+    tileTrack.style.transition = 'transform .25s ease';
+    const w = tileSwiper.clientWidth || 320;
+    const threshold = w * 0.18;
+    const pageCount = tileTrack.children.length;
+    if (dragDelta < -threshold && currentPageIdx < pageCount - 1) currentPageIdx++;
+    else if (dragDelta > threshold && currentPageIdx > 0) currentPageIdx--;
+    updateTilePosition();
   };
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
-  window.addEventListener('resize', updateTrackPosition);
+  window.addEventListener('resize', updateTilePosition);
 
-  renderCats();
-  const catCard = el('section', { class: 'card add-cat-card' }, [
-    el('div', { class: 'add-section-label', text: '选择分类' }),
-    catCarousel,
-    catPagination
-  ]);
+  const catSection = el('section', { class: 'cat-section' }, [tileSwiper, tileDots]);
 
-  // Transfer-specific fields (from / to account selectors)
-  const fromSelect = el('select', { class: 'input', id: 'add-from-account' });
-  allAccounts.forEach(a => {
-    fromSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
+  // ===== 账户胶囊 =====
+  function buildAcctRow(labelText, selectedId, onSelect) {
+    const row = el('div', { class: 'acct-row', role: 'radiogroup', 'aria-label': labelText });
+    function renderChips() {
+      row.innerHTML = '';
+      allAccounts.forEach(a => {
+        const chip = el('button', {
+          class: 'acct-chip' + (selectedId === a.id ? ' active' : ''), type: 'button', role: 'radio',
+          'aria-checked': String(selectedId === a.id),
+          onclick: () => { onSelect(a.id); vibrate(6); }
+        }, [document.createTextNode(`${a.icon || '💳'} ${a.name}`)]);
+        row.appendChild(chip);
+      });
+    }
+    renderChips();
+    return { row, refresh: renderChips, setSelected: (id) => { selectedId = id; renderChips(); } };
+  }
+
+  let fromChips, toChips, acctChips;
+  function buildAccountArea() {
+    if (state.type === 'transfer') {
+      const wrap = el('div', { class: 'xfer-wrap' });
+      fromChips = buildAcctRow('从账户', state.accountId, (id) => { state.accountId = id; });
+      toChips = buildAcctRow('到账户', state.toAccountId, (id) => { state.toAccountId = id; });
+      wrap.appendChild(el('div', { class: 'xfer-row' }, [el('span', { class: 'xfer-label', text: '从' }), fromChips.row]));
+      wrap.appendChild(el('div', { class: 'xfer-row' }, [el('span', { class: 'xfer-label', text: '到' }), toChips.row]));
+      return wrap;
+    }
+    acctChips = buildAcctRow('账户', state.accountId, (id) => { state.accountId = id; });
+    return acctChips.row;
+  }
+
+  // ===== 内联元信息行：账本 · 日期 · 备注 =====
+  const metaDateBtn = el('button', { class: 'meta-btn', type: 'button' });
+  const metaNoteBtn = el('button', { class: 'meta-btn', type: 'button' });
+  const hiddenDate = el('input', { type: 'date', value: state.date, style: 'position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;' });
+  hiddenDate.addEventListener('change', (e) => { state.date = e.target.value || state.date; refreshMeta(); });
+  metaDateBtn.addEventListener('click', () => {
+    try { hiddenDate.showPicker && hiddenDate.showPicker(); } catch (e) { /* ignore */ }
+    hiddenDate.click();
   });
-  fromSelect.value = state.accountId;
-  fromSelect.addEventListener('change', (e) => { state.accountId = e.target.value; });
-
-  const toSelect = el('select', { class: 'input', id: 'add-to-account' });
-  allAccounts.forEach(a => {
-    toSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
+  metaNoteBtn.addEventListener('click', async () => {
+    const v = await promptDialog({ title: '备注', label: '备注内容（最多 50 字）', defaultValue: state.note, placeholder: '选填', okText: '保存' });
+    if (v == null) return;
+    state.note = String(v).slice(0, 50);
+    refreshMeta();
   });
-  toSelect.value = state.toAccountId || (allAccounts[1] ? allAccounts[1].id : '');
-  toSelect.addEventListener('change', (e) => { state.toAccountId = e.target.value; });
-
-  const transferCard = el('section', { class: 'card add-transfer-card' }, [
-    el('div', { class: 'field' }, [
-      el('label', { for: 'add-from-account', text: '从账户' }),
-      fromSelect
+  function refreshMeta() {
+    const [y, m, d] = state.date.split('-');
+    metaDateBtn.innerHTML = '';
+    metaDateBtn.append(
+      el('span', { class: 'mi', 'aria-hidden': 'true', text: '📅' }),
+      document.createTextNode(`${Number(m)}月${Number(d)}日`)
+    );
+    metaNoteBtn.innerHTML = '';
+    metaNoteBtn.append(
+      el('span', { class: 'mi', 'aria-hidden': 'true', text: '📝' }),
+      document.createTextNode(state.note ? (state.note.length > 10 ? state.note.slice(0, 10) + '…' : state.note) : '添加备注')
+    );
+    metaNoteBtn.classList.toggle('has-note', !!state.note);
+  }
+  const metaRow = el('div', { class: 'meta-row' }, [
+    el('button', {
+      class: 'meta-btn', type: 'button',
+      onclick: () => toast('多账本开发中')
+    }, [
+      el('span', { class: 'mi', 'aria-hidden': 'true', text: '📖' }),
+      document.createTextNode('我的账本')
     ]),
-    el('div', { class: 'field', style: 'margin-bottom:0;' }, [
-      el('label', { for: 'add-to-account', text: '到账户' }),
-      toSelect
-    ])
+    metaDateBtn,
+    metaNoteBtn,
+    hiddenDate
   ]);
 
-  // Account selector for expense/income (single account picker)
-  const accountSelect = el('select', { class: 'input', id: 'add-account' });
-  allAccounts.forEach(a => {
-    accountSelect.appendChild(el('option', { value: a.id, text: a.icon + ' ' + a.name }));
+  // ===== 4 列键盘：+ − 连续运算 / 再记 / 完成 =====
+  const kb = el('div', { class: 'kb4', role: 'group', 'aria-label': '金额键盘' });
+  const againKey = el('button', { class: 'kb-key fn', type: 'button', text: '再记', onclick: () => saveCurrent(true) });
+  const doneKey = el('button', { class: 'kb-key kb-done', type: 'button', text: '完成', onclick: () => saveCurrent(false) });
+  const kbRows = [
+    ['7', '8', '9', 'back'],
+    ['4', '5', '6', '+'],
+    ['1', '2', '3', '-'],
+    ['.', '0', 'again', 'done']
+  ];
+  kbRows.flat().forEach(k => {
+    if (k === 'again') { kb.appendChild(againKey); return; }
+    if (k === 'done') { kb.appendChild(doneKey); return; }
+    if (k === 'back') {
+      kb.appendChild(el('button', { class: 'kb-key danger', type: 'button', 'aria-label': '退格', onclick: () => onKey('⌫') }, [
+        el('svg', { viewBox: '0 0 24 24', width: '22', height: '22', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<path d="M9 5h11a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 20 19H9l-5.5-7L9 5Z"/><path d="m12.5 9.5 5 5m0-5-5 5"/>' })
+      ]));
+      return;
+    }
+    if (k === '+' || k === '-') {
+      kb.appendChild(el('button', { class: 'kb-key op', type: 'button', 'aria-label': k === '+' ? '加' : '减', text: k, onclick: () => onKey(k) }));
+      return;
+    }
+    kb.appendChild(el('button', { class: 'kb-key', type: 'button', text: k, onclick: () => onKey(k) }));
   });
-  accountSelect.value = state.accountId || '';
-  accountSelect.addEventListener('change', (e) => { state.accountId = e.target.value; });
 
-  const accountCell = el('div', { class: 'add-field' }, [
-    el('label', { for: 'add-account', text: '账户' }),
-    allAccounts.length === 0
-      ? el('button', { class: 'btn', style: 'padding:6px 8px;font-size:12px;', onclick: () => location.hash = '#/accounts' }, [el('span', { text: '去创建' })])
-      : accountSelect
-  ]);
+  function onKey(k) {
+    if (k === '⌫') {
+      state.expr = state.expr.slice(0, -1);
+    } else if (k === '+' || k === '-') {
+      // 运算符：不能开头、不能连续
+      if (!state.expr || /[+-]$/.test(state.expr)) return;
+      state.expr += k;
+    } else if (k === '.') {
+      const seg = currentSegment();
+      if (seg.includes('.')) return;
+      state.expr += (seg === '' ? '0.' : '.');
+    } else {
+      const seg = currentSegment();
+      if (seg.includes('.')) {
+        if (seg.split('.')[1].length >= 2) return;
+        state.expr += k;
+      } else {
+        if (seg === '0') state.expr = state.expr.slice(0, -1) + k;
+        else {
+          if (seg.length >= 8) return;
+          state.expr += k;
+        }
+      }
+    }
+    if (state.expr.length > 24) state.expr = state.expr.slice(0, 24);
+    refreshAmtBar();
+  }
+  function currentSegment() {
+    const m = state.expr.split(/[+-]/);
+    return m[m.length - 1] || '';
+  }
+  // 求值：整数分运算，避免浮点误差；仅 + −，从左到右
+  function evaluateExpr() {
+    const s = state.expr;
+    if (!s) return NaN;
+    if (!/^\d+(\.\d{1,2})?([+-]\d+(\.\d{1,2})?)*$/.test(s)) return NaN;
+    const tokens = s.match(/(\d+\.?\d{0,2}|[+-])/g) || [];
+    let cents = toCentsSafe(tokens[0]);
+    if (cents == null) return NaN;
+    for (let i = 1; i < tokens.length; i += 2) {
+      const op = tokens[i];
+      const v = toCentsSafe(tokens[i + 1]);
+      if (v == null) return NaN;
+      cents = op === '+' ? cents + v : cents - v;
+    }
+    if (!Number.isSafeInteger(cents)) return NaN;
+    if (cents <= 0) return NaN;
+    return cents / 100;
+  }
+  function toCentsSafe(numStr) {
+    if (!/^\d+(\.\d{1,2})?$/.test(numStr)) return null;
+    const [i, f = ''] = numStr.split('.');
+    const frac = Number((f + '00').slice(0, 2));
+    return Number(i) * 100 + frac;
+  }
 
-  // Note + Date
-  const noteInput = el('input', { class: 'input', id: 'add-note', type: 'text', placeholder: '备注', value: state.note, maxlength: 50 });
-  noteInput.addEventListener('input', (e) => { state.note = e.target.value; });
-  const dateInput = el('input', { class: 'input', id: 'add-date', type: 'date', value: state.date });
-  dateInput.addEventListener('change', (e) => { state.date = e.target.value; });
-
-  const noteCell = el('div', { class: 'add-field' }, [
-    el('label', { for: 'add-note', text: '备注' }),
-    noteInput
-  ]);
-  const dateCell = el('div', { class: 'add-field' }, [
-    el('label', { for: 'add-date', text: '日期' }),
-    dateInput
-  ]);
-
-  // 字段行（账户 / 日期 / 备注）放在键盘上方
-  const fieldsRow = el('div', { class: 'add-fields' }, [accountCell, dateCell, noteCell]);
-
-  // ===== 固定数字键盘（始终显示在页面底部）+ 保存按钮 =====
-  const keypadGrid = el('div', { class: 'keypad' });
-  const keys = ['1','2','3','4','5','6','7','8','9','.','0','⌫'];
-  keys.forEach(k => {
-    const btn = el('button', { text: k, onclick: () => onKey(k) });
-    if (k === '⌫') btn.classList.add('danger');
-    keypadGrid.appendChild(btn);
-  });
-  const saveBtn = el('button', { class: 'keypad-save', onclick: onSave }, [el('span', { text: '保存' })]);
-  const keypadRow = el('div', { class: 'keypad-row' }, [keypadGrid, saveBtn]);
-  const bottom = el('div', { class: 'add-bottom' }, [fieldsRow, keypadRow]);
-
-  // 中部内容容器（分类轮播 或 转账字段）
-  const main = el('div', { class: 'add-main' });
-
-  // 整体固定布局
-  const layout = el('div', { class: 'add-layout' }, [topRow, amountDisplay, main, bottom]);
+  // ===== 组装 & 类型切换 =====
+  const main = el('div', { class: 'add-main2' });
+  const layout = el('div', { class: 'add-layout2' }, [topRow, amtBar, main, metaRow, kb]);
   mount.append(layout);
-  applyTypeVisibility();
-
-  // 进入记账页时隐藏底部 tabbar，腾出空间给固定键盘
   document.body.classList.add('route-add');
-
-  // 返回 cleanup：路由切换时恢复 tabbar
-  return () => {
-    document.body.classList.remove('route-add');
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
-    window.removeEventListener('resize', updateTrackPosition);
-  };
 
   function applyTypeVisibility() {
     main.innerHTML = '';
     if (state.type === 'transfer') {
-      main.appendChild(transferCard);
-      accountCell.style.display = 'none';
+      main.appendChild(buildAccountArea());
+      againKey.style.visibility = 'hidden';
     } else {
-      main.appendChild(catCard);
-      accountCell.style.display = '';
-      requestAnimationFrame(updateTrackPosition);
+      main.appendChild(catSection);
+      main.appendChild(buildAccountArea());
+      againKey.style.visibility = 'visible';
     }
+    refreshAmtBar();
   }
 
-  function refreshAmount() {
-    amountValue.textContent = state.amount || '0.00';
-    amountValue.className = 'value ' + (state.amount ? '' : 'is-empty');
-  }
   function refreshType() {
-    typeBtns.expense.className = state.type === 'expense' ? 'active expense' : '';
-    typeBtns.income.className = state.type === 'income' ? 'active income' : '';
-    typeBtns.transfer.className = state.type === 'transfer' ? 'active transfer' : '';
+    typeBtns.expense.className = state.type === 'expense' ? 'active' : '';
+    typeBtns.income.className = state.type === 'income' ? 'active' : '';
+    typeBtns.transfer.className = state.type === 'transfer' ? 'active' : '';
     cats = allCats.filter(c => c.type === state.type);
-    if (state.categoryId && !cats.find(c => c.id === state.categoryId)) {
-      state.categoryId = null;
-    }
+    if (state.categoryId && !cats.find(c => c.id === state.categoryId)) state.categoryId = null;
     if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
     currentPageIdx = 0;
-    renderCats();
+    renderTiles();
     applyTypeVisibility();
   }
-  function selectCat(id) {
-    state.categoryId = id;
-    vibrate(8);
-    renderCats();
-  }
   function setType(t) {
+    if (state.type === t) return;
     state.type = t;
     refreshType();
   }
-  function onKey(k) {
-    if (k === '⌫') {
-      state.amount = state.amount.slice(0, -1);
-    } else if (k === '.') {
-      if (state.amount.includes('.')) return;
-      if (!state.amount) state.amount = '0';
-      state.amount += '.';
-    } else {
-      if (state.amount.includes('.') && state.amount.split('.')[1].length >= 2) return;
-      const intPart = state.amount.split('.')[0];
-      if (!state.amount.includes('.') && intPart.length >= 8) return;
-      if (state.amount === '0') state.amount = '';
-      state.amount += k;
-    }
-    refreshAmount();
-  }
-  async function onSave() {
-    if (!state.amount || parseFloat(state.amount) <= 0) {
-      toast('请输入金额');
-      return;
-    }
-    const amount = state.amount;
-    if (isNaN(amount) || amount <= 0) {
-      toast('金额无效');
-      return;
-    }
 
-    // Transfer mode
+  renderTiles();
+  applyTypeVisibility();
+  refreshMeta();
+
+  return () => {
+    document.body.classList.remove('route-add');
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    window.removeEventListener('resize', updateTilePosition);
+  };
+
+  // ===== 保存 =====
+  async function saveCurrent(continueEditing) {
+    const amount = evaluateExpr();
+    if (isNaN(amount)) {
+      toast(state.expr ? '金额格式有误' : '请输入金额');
+      return;
+    }
+    const amountStr = amount.toFixed(2);
+
     if (state.type === 'transfer') {
-      if (!state.accountId || !state.toAccountId) {
-        toast('请选择源账户和目标账户');
-        return;
-      }
-      if (state.accountId === state.toAccountId) {
-        toast('源账户和目标账户不能相同');
-        return;
-      }
+      if (!state.accountId || !state.toAccountId) { toast('请选择源账户和目标账户'); return; }
+      if (state.accountId === state.toAccountId) { toast('源账户和目标账户不能相同'); return; }
       try {
         if (editId) {
           await updateTransaction(editId, {
-            type: 'transfer',
-            amount,
-            accountId: state.accountId,
-            toAccountId: state.toAccountId,
-            categoryId: null,
-            note: state.note.trim(),
-            date: state.date
+            type: 'transfer', amount: amountStr,
+            accountId: state.accountId, toAccountId: state.toAccountId,
+            categoryId: null, note: state.note.trim(), date: state.date
           });
           toast('已更新');
         } else {
-          await transferMoney({
-            fromId: state.accountId,
-            toId: state.toAccountId,
-            amount,
-            note: state.note.trim(),
-            date: state.date
-          });
+          await transferMoney({ fromId: state.accountId, toId: state.toAccountId, amount: amountStr, note: state.note.trim(), date: state.date });
           toast('已转账');
         }
         vibrate(15);
+        if (continueEditing) return;
         setTimeout(() => { location.hash = '#/'; }, 250);
       } catch (e) {
         toast('保存失败：' + (e.message || e));
@@ -410,22 +436,12 @@ export async function renderAddTransaction(mount, params = {}) {
       return;
     }
 
-    // Expense / income mode
-    if (!state.categoryId) {
-      toast('请选择分类');
-      return;
-    }
-    if (!state.accountId) {
-      toast('请选择账户');
-      return;
-    }
+    if (!state.categoryId) { toast('请选择分类'); return; }
+    if (!state.accountId) { toast('请选择账户'); return; }
     const payload = {
-      type: state.type,
-      amount,
-      categoryId: state.categoryId,
-      accountId: state.accountId,
-      note: state.note.trim(),
-      date: state.date
+      type: state.type, amount: amountStr,
+      categoryId: state.categoryId, accountId: state.accountId,
+      note: state.note.trim(), date: state.date
     };
     try {
       if (editId) {
@@ -433,14 +449,20 @@ export async function renderAddTransaction(mount, params = {}) {
         toast('已更新');
       } else {
         await addTransaction(payload);
-        toast('已保存');
+        toast(continueEditing ? '已保存，记下一笔' : '已保存');
       }
       vibrate(15);
+      if (continueEditing && !editId) {
+        state.expr = '';
+        refreshAmtBar();
+        return;
+      }
       setTimeout(() => { location.hash = '#/'; }, 250);
     } catch (e) {
       toast('保存失败：' + (e.message || e));
     }
   }
+
   async function onDelete(id) {
     const ok = await confirmDialog('确定要删除这条记录吗？', { danger: true, okText: '删除' });
     if (!ok) return;
