@@ -291,10 +291,25 @@ function hitIndexAt(canvas, clientX) {
   return clamp(idx, 0, ht.count - 1);
 }
 
+// v2.1.3: 方向锁定的触摸 scrub。
+// 关键修复：此前 touchmove 为 passive 监听，手指滑动带轻微纵向位移时
+// WebView 会接管手势滚动页面并派发 touchcancel，导致滑动中途断掉（不跟手）。
+// 现在 touchmove 改为非被动监听，起步约 6px 后按主方向锁定：
+//   横向 → 整段手势 preventDefault 阻断页面滚动/触摸取消，索引钳制在边界内贴边跟随；
+//   纵向 → 主动放弃，交还页面正常滚动。
 function bindPointerInteraction(canvas) {
   if (canvas._chartPointerBound) return;
   canvas._chartPointerBound = true;
-  const st = { active: false, last: -1 };
+
+  const DIR_LOCK_SLOP = 6; // 判定滑动方向的位移阈值(px)
+  const st = {
+    active: false,      // 触摸有效期内
+    locked: false,      // 已判定方向
+    horizontal: false,  // 判定为横向 scrub
+    startX: 0,
+    startY: 0,
+    last: -1            // 最近命中的点索引
+  };
 
   const fireScrub = (idx) => {
     if (idx == null) return;
@@ -304,48 +319,88 @@ function bindPointerInteraction(canvas) {
     if (cb) cb(idx);
   };
 
-  const begin = (clientX) => {
+  const beginTouch = (t) => {
     st.active = true;
+    st.locked = false;
+    st.startX = t.clientX;
+    st.startY = t.clientY;
     st.last = -1;
-    st.moved = false;
-    const idx = hitIndexAt(canvas, clientX);
-    if (idx != null) { st.moved = false; fireScrub(idx); st.last = idx; }
+    const idx = hitIndexAt(canvas, t.clientX);
+    if (idx != null) fireScrub(idx);
   };
-  const move = (clientX, requireActive) => {
-    if (requireActive && !st.active) return;
-    const idx = hitIndexAt(canvas, clientX);
-    if (idx != null) { st.moved = st.moved || st.active; fireScrub(idx); }
-  };
-  const end = () => {
+
+  const onTouchMove = (e) => {
     if (!st.active) return;
+    e.stopPropagation();
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    const dx = t.clientX - st.startX;
+    const dy = t.clientY - st.startY;
+
+    if (!st.locked && (Math.abs(dx) > DIR_LOCK_SLOP || Math.abs(dy) > DIR_LOCK_SLOP)) {
+      st.locked = true;
+      st.horizontal = Math.abs(dx) >= Math.abs(dy);
+      if (!st.horizontal) {
+        // 纵向意图：交还浏览器滚动，本手势作废且不触发选择
+        st.active = false;
+        return;
+      }
+    }
+
+    if (!st.locked || st.horizontal) {
+      // 横向锁定后：无论指针是否滑出绘图区都贴边跟随，并阻止页面滚动/触摸取消
+      e.preventDefault();
+      const ht = canvas._chartHit;
+      if (!ht || !ht.count) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = t.clientX - rect.left;
+      const raw = ht.step > 0 ? (x - ht.x0) / ht.step : 0;
+      fireScrub(clamp(Math.round(raw), 0, ht.count - 1));
+    }
+  };
+
+  const finalizeTouch = () => {
+    if (!st.active && st.last < 0) return; // 没有产生任何有效交互
     st.active = false;
+    st.locked = false;
     const cb = canvas._chartOnSelect;
     const idx = st.last >= 0 ? st.last : null;
     st.last = -1;
-    st.moved = false;
     if (cb) cb(idx);
   };
 
-  // touch：stopPropagation 避免页面级手势（右滑返回等）被误触
+  const abandonTouch = () => {
+    st.active = false;
+    st.locked = false;
+    st.last = -1;
+  };
+
+  // touch：stopPropagation 避免页面级手势（右滑返回等）被误触；
+  // move 为非被动监听以便横向 scrub 时 preventDefault。
   canvas.addEventListener('touchstart', (e) => {
     e.stopPropagation();
-    const t = e.touches[0];
-    if (t) begin(t.clientX);
+    const t = e.touches && e.touches[0];
+    if (t) beginTouch(t);
   }, { passive: true });
-  canvas.addEventListener('touchmove', (e) => {
-    e.stopPropagation();
-    const t = e.touches[0];
-    if (t) move(t.clientX, true);
-  }, { passive: true });
-  canvas.addEventListener('touchend', (e) => { e.stopPropagation(); end(); }, { passive: true });
-  canvas.addEventListener('touchcancel', () => { st.active = false; st.last = -1; st.moved = false; }, { passive: true });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  canvas.addEventListener('touchend', (e) => { e.stopPropagation(); finalizeTouch(); }, { passive: true });
+  canvas.addEventListener('touchcancel', abandonTouch, { passive: true });
 
-  // 鼠标：hover 预览；按下拖动同触摸
-  canvas.addEventListener('mousedown', (e) => { e.stopPropagation(); begin(e.clientX); });
-  canvas.addEventListener('mousemove', (e) => { move(e.clientX, st.active); e.stopPropagation(); });
-  canvas.addEventListener('mouseleave', () => { if (!st.active) { /* 悬停离开不做清理，选择状态由视图管理 */ } });
-  window.addEventListener('mousemove', (e) => { if (st.active) move(e.clientX, true); });
-  window.addEventListener('mouseup', () => end());
+  // 鼠标：hover 预览；按下拖动等同横向 scrub
+  const beginMouse = (clientX) => { st.active = true; st.locked = true; st.horizontal = true; st.startX = clientX; st.startY = clientX; st.last = -1; };
+  canvas.addEventListener('mousedown', (e) => { e.stopPropagation(); beginMouse(e.clientX); const i = hitIndexAt(canvas, e.clientX); if (i != null) fireScrub(i); });
+  const onMouseMove = (e) => {
+    if (st.active && st.horizontal) {
+      const idx = hitIndexAt(canvas, e.clientX);
+      if (idx != null) fireScrub(idx);
+    } else if (!st.active) {
+      const idx = hitIndexAt(canvas, e.clientX);
+      if (idx != null) fireScrub(idx);
+    }
+  };
+  canvas.addEventListener('mousemove', (e) => { e.stopPropagation(); onMouseMove(e); });
+  window.addEventListener('mousemove', (e) => { if (st.active) onMouseMove(e); });
+  window.addEventListener('mouseup', () => finalizeTouch());
 }
 
 /* ============================ 绘制入口 ============================ */

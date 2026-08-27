@@ -1,5 +1,5 @@
-/* My Accounting PWA v2.1.2 application shell. */
-const CACHE_NAME = 'accounting-v2.1.2';
+/* My Accounting PWA v2.1.3 application shell. */
+const CACHE_NAME = 'accounting-v2.1.3';
 const PRECACHE_URLS = [
   './',
   './index.html',

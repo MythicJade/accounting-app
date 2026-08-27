@@ -46,6 +46,8 @@ export async function renderAssetsTrend(mount) {
     }
 
     // 快照卡片：选中月份时由 updateSnapshot() 实时刷新内容
+    // v2.1.3: 用「有数据的月份行」做索引映射，避免与原始 12 月数组错位
+    const validRows = data.filter(d => d.netAssets != null);
     const snapshotMonth = el('div', { class: 'summary-month' });
     const snapshotNet = el('div', { class: 'summary-amount' });
     const snapshotAssets = el('div', { class: 'summary-sub-amount income' });
@@ -65,11 +67,11 @@ export async function renderAssetsTrend(mount) {
       ])
     ]);
 
-    // 更新快照显示：monthIdx=null 时回显最新月
+    // 更新快照显示：monthIdx 为图表 X 轴索引（validRows 下标），null 回显最新月
     function updateSnapshot(monthIdx) {
       let d = latestData;
-      if (typeof monthIdx === 'number' && monthIdx >= 0 && monthIdx < data.length && data[monthIdx].netAssets != null) {
-        d = data[monthIdx];
+      if (typeof monthIdx === 'number' && validRows[monthIdx]) {
+        d = validRows[monthIdx];
       }
       if (!d) return;
       snapshotMonth.textContent = d.label + '末净资产';
