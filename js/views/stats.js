@@ -7,6 +7,7 @@ import { el } from '../ui.js';
 import { drawPieChart } from '../charts/pie-chart.js';
 import { drawLineChart } from '../charts/line-chart.js';
 import { categoryIconNode } from '../category-icons.js';
+import { cssVar, themePalette } from '../theme.js';
 
 const PERIODS = [
   { key: 'month',   label: '月' },
@@ -219,8 +220,12 @@ export async function renderStats(mount) {
 
   // 折线图局部重绘：滑动（scrub）与点选只刷新画布，不触发整页 render
   function redrawLineChart() {
+    // v2.2.0：收支趋势线颜色跟随主题语义色
+    const lineColor = _state.view === 'income'
+      ? cssVar('--income', '#21B573')
+      : cssVar('--expense', '#E2574C');
     drawLineChart(lineCanvas, _lastLineData, {
-      color: _state.view === 'income' ? '#35C98A' : '#FFC62E',
+      color: lineColor,
       selected: _state.selectedPoint,
       onScrub: (idx) => {
         _state.selectedPoint = idx;
@@ -277,6 +282,12 @@ export async function renderStats(mount) {
       pieData.push({ label: c.name, value: val, color: c.color, id });
     });
     pieData.sort((a, b) => b.value - a.value);
+
+    // v2.2.0 统一配色：饼图切片按「金额排名」取用当前主题的分类调色板，
+    // 相邻扇区恒为不同色相 —— 根治分类自选色组合凌乱的问题。
+    // 排行条目的色点/进度条复用同一颜色，保证图例一致。
+    const palette = themePalette();
+    pieData.forEach((d, i) => { d.color = palette[i % palette.length]; });
 
     // reset selection if out of range
     if (_state.selectedSlice != null && _state.selectedSlice >= pieData.length) {

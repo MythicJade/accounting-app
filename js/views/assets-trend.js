@@ -5,6 +5,7 @@ import { monthlyAssetTrend } from '../store.js';
 import { formatMoney } from '../format.js';
 import { drawMultiLineChart } from '../charts/line-chart.js';
 import { el } from '../ui.js';
+import { cssVar } from '../theme.js';
 
 export async function renderAssetsTrend(mount) {
   let year = new Date().getFullYear();
@@ -100,21 +101,22 @@ export async function renderAssetsTrend(mount) {
     content.appendChild(chartCard);
 
     // 构建三个系列数据（只显示有数据的月份）
+    // v2.2.0：系列颜色来自当前主题的图表变量，四套主题自动切换
     const validData = data.filter(d => d.netAssets != null);
     lastSeries = [
       {
         label: '净资产',
-        color: '#6387FF',
+        color: cssVar('--chart-net', '#D98F06'),
         data: validData.map(d => ({ label: d.label, value: d.netAssets, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总资产',
-        color: '#FFC62E',
+        color: cssVar('--chart-asset-trend', '#2E9E8F'),
         data: validData.map(d => ({ label: d.label, value: d.totalAssets || 0, fullLabel: year + '年' + d.label }))
       },
       {
         label: '总负债',
-        color: '#FF7B6C',
+        color: cssVar('--chart-liability', '#E05648'),
         data: validData.map(d => ({ label: d.label, value: d.totalLiabilities || 0, fullLabel: year + '年' + d.label }))
       }
     ];

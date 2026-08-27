@@ -19,6 +19,7 @@ function pieColors() {
     text2: readVar('--text-2', '#6e6e73'),
     text3: readVar('--text-3', '#aeaeb2'),
     primary: readVar('--c-primary', '#007AFF'),
+    card: readVar('--card', '#ffffff'),
     leader: readVar('--leader-line', '#c7c7cc')
   };
 }
@@ -91,7 +92,7 @@ export function drawPieChart(canvas, data, options = {}) {
     ctx.fillStyle = s.color;
     ctx.fill();
     if (isSelected) {
-      ctx.strokeStyle = '#fff';
+      ctx.strokeStyle = C.card;
       ctx.lineWidth = 2;
       ctx.stroke();
     }

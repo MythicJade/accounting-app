@@ -13,6 +13,10 @@ import { renderAssetsTrend } from './views/assets-trend.js';
 import { renderCategories } from './views/categories.js';
 import { renderTransactions } from './views/transactions.js';
 import { registerPWA } from './pwa.js';
+import { applySavedTheme } from './theme.js';
+
+// v2.2.0：在任何视图渲染前恢复用户选择的主题（鎏金暖阳/青屿/靛夜星辉/暗夜）
+applySavedTheme();
 
 // Make toast globally accessible for convenience (used by some inline handlers)
 window.toast = toast;

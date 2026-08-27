@@ -25,6 +25,7 @@ function chartColors() {
     zero: readVar('--zero-line', '#d1d1d6'),
     text3: readVar('--text-3', '#aeaeb2'),
     primary: readVar('--c-primary', '#007AFF'),
+    card: readVar('--card', '#ffffff'),
     tooltipBg: 'rgba(28, 28, 30, 0.88)',
     crosshair: 'rgba(120, 120, 128, 0.42)'
   };
@@ -493,7 +494,7 @@ export function drawLineChart(canvas, data, options = {}) {
       const isSel = selIdx === i;
       ctx.beginPath();
       ctx.arc(p.x, p.y, isSel ? 5 : 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = C.card;
       ctx.fill();
       ctx.strokeStyle = lineColor;
       ctx.lineWidth = isSel ? 3 : 2;
@@ -648,7 +649,7 @@ export function drawMultiLineChart(canvas, series, options = {}) {
         if (p.value == null) return;
         ctx.beginPath();
         ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = C.card;
         ctx.fill();
         ctx.strokeStyle = p.color;
         ctx.lineWidth = 2;

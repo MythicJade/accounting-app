@@ -6,6 +6,7 @@ import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypt
 import { router } from '../router.js';
 import { APP_VERSION } from '../version.js';
 import { isNativeApp, shareTextFile } from '../native-bridge.js';
+import { THEMES, getThemeKey, setThemeKey } from '../theme.js';
 
 export async function renderSettings(mount) {
   const count = await countTransactions();
@@ -92,6 +93,37 @@ export async function renderSettings(mount) {
 
   const dataStats = el('p', { class: 'text-sm text-3 center mt-8', text: '当前已记录 ' + count + ' 笔流水' });
 
+  // ===== v2.2.0 外观（主题选择）：鎏金暖阳 / 青屿 / 靛夜星辉 / 暗夜模式 =====
+  const appearanceGrid = el('div', { class: 'theme-grid', role: 'radiogroup', 'aria-label': '选择主题' });
+  function renderThemeTiles() {
+    const current = getThemeKey();
+    appearanceGrid.innerHTML = '';
+    THEMES.forEach(t => {
+      const tile = el('button', {
+        class: 'theme-tile' + (current === t.key ? ' active' : ''),
+        type: 'button', role: 'radio',
+        'aria-checked': String(current === t.key),
+        'aria-label': '切换到主题：' + t.name,
+        onclick: () => { if (getThemeKey() !== t.key) { setThemeKey(t.key); renderThemeTiles(); } }
+      }, [
+        el('span', { class: 'theme-preview', style: `background:linear-gradient(135deg,${t.g1},${t.g2})` }, [
+          el('i', { style: `background:${t.inc}` }),
+          el('i', { style: `background:${t.exp}` }),
+          el('i', { style: `background:${t.chart}` })
+        ]),
+        el('span', { class: 'theme-name', text: t.name }),
+        el('span', { class: 'theme-check', 'aria-hidden': 'true', text: '✓' })
+      ]);
+      appearanceGrid.appendChild(tile);
+    });
+  }
+  renderThemeTiles();
+  const appearanceCard = el('section', { class: 'card appearance-card' }, [
+    el('div', { class: 'card-title section-heading', text: '外观主题' }),
+    appearanceGrid,
+    el('p', { class: 'text-sm text-3', style: 'margin-top:8px;', text: '四套配色即点即换，选择自动保存；图表颜色随主题统一' })
+  ]);
+
   // Danger group
   const dangerGroup = el('div', { class: 'setting-list mt-16' }, [
     el('button', { class: 'setting-item danger', type: 'button', onclick: onClear }, [
@@ -124,7 +156,7 @@ export async function renderSettings(mount) {
     el('div', { class: 'text-sm', text: '默认纯本地运行 · 备份可密码加密' })
   ]);
 
-  mount.append(settingsIntro, dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
+  mount.append(settingsIntro, appearanceCard, dataGroup, dataStats, excelGroup, dangerGroup, helpGroup, about);
 
   // Hidden file input for import
   const fileInput = document.createElement('input');

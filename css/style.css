@@ -1,42 +1,53 @@
 /* ===== Reset & Variables ===== */
 :root {
-  /* ===== 2.1 暖黄点睛：浅灰底 / 白卡 / 收入绿 / 支出珊瑚 / 转账蓝紫 ===== */
-  --c-primary: #FFC62E;
-  --c-primary-dark: #9A7100;
-  --c-primary-light: #FFF7D6;
-  --bg: #F4F5F8;
-  --card: #ffffff;
-  --income: #26B982;
-  --expense: #F36F62;
-  --transfer: #6677E8;
-  --warning: #F39B35;
-  --text: #25272B;
-  --text-2: #74777F;
-  --text-3: #B1B4BB;
-  --border: #EAEBEF;
+  /* ===== v2.2.0 主题体系 =====
+     基准主题：鎏金暖阳（gold）—— 延续暖金品牌、米白纸感底
+     其余主题通过 html[data-theme="teal"|"indigo"|"dark"] 覆盖下面的同一组变量。
+     全部界面颜色只允许引用本组变量；图表系列色一并纳入。 */
 
-  /* 表面色（浅底提示卡） */
-  --c-error-surface: #ffecea;
-  --c-success-surface: #e9f9ee;
-  --c-warning-surface: #fff4e5;
-  --c-transfer-surface: #eee9ff;
+  /* 主色 */
+  --c-primary: #F5AE0D;
+  --c-primary-dark: #8F6500;
+  --c-primary-light: #FFF4CF;
+  --gradient-primary: linear-gradient(135deg, #FFCC4D 0%, #EF9E07 100%);
+  --p-rgb: 245, 174, 13;          /* 主色 RGB 三元组，供 rgba(var(--p-rgb), a) 使用 */
+  --on-primary: #332704;           /* 实心主色上的文字/图标 */
+  --focus-ring: rgba(245, 174, 13, .42);
+  --tab-active: #C8890A;
+
+  /* 表面 / 文字 */
+  --bg: #F6F3EC;
+  --frame-bg: #EAE6DB;             /* html 外层背景 */
+  --card: #ffffff;
+  --surface-warm: #FAF7EE;         /* 首页总览等暖色卡 */
+  --text: #26221A;
+  --text-2: #6E6959;
+  --text-3: #B5AF9F;
+  --border: #E7E3D8;
+
+  /* 语义色 + 深文字变体（用于浅色语义底上的强调字） */
+  --income: #1FA97A;   --income-deep: #14795A;    --c-success-surface: #E4F5ED;
+  --expense: #E2574C;  --expense-deep: #B23B31;   --c-error-surface: #FFECEA;
+  --transfer: #6272EA; --transfer-deep: #4051B8;  --c-transfer-surface: #EDEEFC;
+  --warning: #E8952F;  --warning-deep: #8C6700;   --c-warning-surface: #FFF4E5;
 
   /* 占位 / 填充色 */
-  --fill-1: #F4F5F8;
-  --fill-2: #E7E9EE;
+  --fill-1: #F0EDE4;
+  --fill-2: #E3DFD2;
+  --keypad-bg: #EFEBE1;            /* 数字键盘托盘 */
+  --tabs-track-bg: #ECE7DA;        /* 分段切换轨道 */
+  --search-bg: #EFEBE2;            /* 搜索胶囊 */
 
-  /* 渐变（渐变卡统一主色蓝） */
-  --gradient-primary: linear-gradient(135deg, #FFD75A 0%, #FFBC21 100%);
-
-  /* 图表语义色 */
+  /* 图表 */
   --chart-income: var(--income);
   --chart-expense: var(--expense);
   --chart-asset: var(--c-primary);
-
-  /* 图表网格 / 辅助线 */
-  --grid-line: #f2f2f7;
-  --zero-line: #d1d1d6;
-  --leader-line: #c7c7cc;
+  --chart-net: #D98F06;            /* 资产趋势 · 净资产 */
+  --chart-asset-trend: #2E9E8F;    /* 资产趋势 · 总资产 */
+  --chart-liability: #E05648;      /* 资产趋势 · 总负债 */
+  --grid-line: #F0EDE6;
+  --zero-line: #DCD7CA;
+  --leader-line: #C9C3B5;
 
   /* 间距阶梯 */
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
@@ -50,12 +61,12 @@
   --radius-pill: 999px;
 
   /* 阴影阶梯（保留原名 --shadow / --shadow-lg 重定义） */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.05);
-  --shadow: 0 8px 24px rgba(41, 44, 53, 0.045);
-  --shadow-md: 0 12px 28px rgba(41, 44, 53, 0.07);
-  --shadow-lg: 0 18px 42px rgba(41, 44, 53, 0.09);
-  --shadow-xl: 0 16px 40px -10px rgba(0, 0, 0, 0.10), 0 8px 16px -8px rgba(0, 0, 0, 0.06);
+  --shadow-xs: 0 1px 2px 0 rgba(31, 27, 18, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(31, 27, 18, 0.05), 0 1px 3px -1px rgba(31, 27, 18, 0.05);
+  --shadow: 0 8px 24px rgba(52, 45, 30, 0.05);
+  --shadow-md: 0 12px 28px rgba(52, 45, 30, 0.07);
+  --shadow-lg: 0 18px 42px rgba(52, 45, 30, 0.09);
+  --shadow-xl: 0 16px 40px -10px rgba(31, 27, 18, 0.10), 0 8px 16px -8px rgba(31, 27, 18, 0.06);
 
   --tabbar-h: 74px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -1680,3 +1691,247 @@ body.route-add .view {
 .category-icon-section .category-icon-grid .cat-item { padding: 5px 1px; }
 .icon-search-empty { display: flex; align-items: center; justify-content: center; min-height: 88px; }
 .icon-search-empty p { color: var(--text-3); font-size: 13px; }
+
+/* ===== v2.2.0 主题：青屿（teal） ===== */
+html[data-theme="teal"] {
+  color-scheme: light;
+  --c-primary: #149FB0;
+  --c-primary-dark: #0B6B78;
+  --c-primary-light: #DCF6F7;
+  --gradient-primary: linear-gradient(135deg, #35CFD8 0%, #0F94A4 100%);
+  --p-rgb: 20, 159, 176;
+  --on-primary: #FFFFFF;
+  --focus-ring: rgba(20, 159, 176, .40);
+  --tab-active: #0E8592;
+
+  --bg: #F2F6F7;
+  --frame-bg: #DFE9EA;
+  --card: #ffffff;
+  --surface-warm: #EDF4F5;
+  --text: #17242C;
+  --text-2: #5F707A;
+  --text-3: #A8BBC0;
+  --border: #DFE9EB;
+
+  --income: #21B573;   --income-deep: #0F7A52;    --c-success-surface: #DFF6EC;
+  --expense: #EF584D;  --expense-deep: #B23A30;   --c-error-surface: #FFE9E7;
+  --transfer: #5B6BE8; --transfer-deep: #3F51B5;  --c-transfer-surface: #EBEDFC;
+  --warning: #F09A38;  --warning-deep: #96590C;   --c-warning-surface: #FFF1DC;
+
+  --fill-1: #EBF2F3;
+  --fill-2: #DBE8EA;
+  --keypad-bg: #E9F0F1;
+  --tabs-track-bg: #E2EDEF;
+  --search-bg: #E7EFF0;
+
+  --chart-net: #0E93A6;
+  --chart-asset-trend: #F0A63A;
+  --chart-liability: #E15A67;
+  --grid-line: #E8F0F1;
+  --zero-line: #CFE0E2;
+  --leader-line: #AFC4C8;
+
+  --shadow-xs: 0 1px 2px 0 rgba(23, 36, 44, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(23, 36, 44, 0.05), 0 1px 3px -1px rgba(23, 36, 44, 0.05);
+  --shadow: 0 8px 24px rgba(30, 46, 52, 0.05);
+  --shadow-md: 0 12px 28px rgba(30, 46, 52, 0.07);
+  --shadow-lg: 0 18px 42px rgba(30, 46, 52, 0.09);
+}
+
+/* ===== v2.2.0 主题：靛夜星辉（indigo） ===== */
+html[data-theme="indigo"] {
+  color-scheme: light;
+  --c-primary: #5568F5;
+  --c-primary-dark: #3743C9;
+  --c-primary-light: #E9ECFF;
+  --gradient-primary: linear-gradient(135deg, #7C8CFF 0%, #4763F0 100%);
+  --p-rgb: 85, 104, 245;
+  --on-primary: #FFFFFF;
+  --focus-ring: rgba(85, 104, 245, .40);
+  --tab-active: #4763F0;
+
+  --bg: #F3F4FA;
+  --frame-bg: #E2E4F0;
+  --card: #ffffff;
+  --surface-warm: #EEF0FA;
+  --text: #191C2E;
+  --text-2: #666B84;
+  --text-3: #ABB0C2;
+  --border: #E3E5F0;
+
+  --income: #00B188;   --income-deep: #007A5E;    --c-success-surface: #DFF6EF;
+  --expense: #FF675A;  --expense-deep: #C2402F;   --c-error-surface: #FFEAE8;
+  --transfer: #0BA5EC; --transfer-deep: #0673A8;  --c-transfer-surface: #E3F3FD;
+  --warning: #F5A623;  --warning-deep: #96590C;   --c-warning-surface: #FFF3DE;
+
+  --fill-1: #EEF0F8;
+  --fill-2: #E0E3F0;
+  --keypad-bg: #ECEEF6;
+  --tabs-track-bg: #E7EAF4;
+  --search-bg: #EAEDF5;
+
+  --chart-net: #5568F5;
+  --chart-asset-trend: #F2B33D;
+  --chart-liability: #FF6B5E;
+  --grid-line: #ECEDF5;
+  --zero-line: #D8DBE9;
+  --leader-line: #B4B9CE;
+
+  --shadow-xs: 0 1px 2px 0 rgba(25, 28, 46, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(25, 28, 46, 0.05), 0 1px 3px -1px rgba(25, 28, 46, 0.05);
+  --shadow: 0 8px 24px rgba(35, 38, 62, 0.05);
+  --shadow-md: 0 12px 28px rgba(35, 38, 62, 0.07);
+  --shadow-lg: 0 18px 42px rgba(35, 38, 62, 0.09);
+}
+
+/* ===== v2.2.0 主题：暗夜模式（dark） =====
+   暗夜里以「鎏金」为点睛主色，与默认主题形成品牌呼应 */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --c-primary: #FFC94A;
+  --c-primary-dark: #FFDE9E;
+  --c-primary-light: #35301C;
+  --gradient-primary: linear-gradient(135deg, #FFCB4F 0%, #F0A10A 100%);
+  --p-rgb: 255, 201, 74;
+  --on-primary: #241A03;
+  --focus-ring: rgba(255, 201, 74, .42);
+  --tab-active: #FFC94A;
+
+  --bg: #12141B;
+  --frame-bg: #0B0D12;
+  --card: #1B202B;
+  --surface-warm: #1D2230;
+  --text: #EAECF4;
+  --text-2: #A6ADC0;
+  --text-3: #697086;
+  --border: #2A3040;
+
+  --income: #34D399;   --income-deep: #7CE8BF;   --c-success-surface: #17332B;
+  --expense: #FF8577;  --expense-deep: #FFB0A6;  --c-error-surface: #3B2426;
+  --transfer: #93A0FF; --transfer-deep: #B7C0FF; --c-transfer-surface: #26304F;
+  --warning: #F5B54A;  --warning-deep: #FFD98A;  --c-warning-surface: #39301B;
+
+  --fill-1: #222837;
+  --fill-2: #2C3446;
+  --keypad-bg: #232939;
+  --tabs-track-bg: #272E40;
+  --search-bg: #212736;
+
+  --chart-net: #F0B429;
+  --chart-asset-trend: #2DD4BF;
+  --chart-liability: #FB7185;
+  --grid-line: rgba(255, 255, 255, 0.07);
+  --zero-line: rgba(255, 255, 255, 0.16);
+  --leader-line: rgba(255, 255, 255, 0.24);
+
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.32);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.36), 0 1px 3px -1px rgba(0, 0, 0, 0.32);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 18px 42px rgba(0, 0, 0, 0.44);
+}
+
+/* ===== v2.2.0 硬编码颜色收编层 =====
+   以下规则与本文件前文的字面量选择器同特异性，但排在文件末尾，
+   因此全部生效；所有界面颜色自此统一走上方主题变量。 */
+html { background: var(--frame-bg); }
+body { background: var(--bg); }
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea { color-scheme: dark; }
+
+:focus-visible { outline-color: var(--focus-ring); }
+
+.swipe-hint { background: var(--tabs-track-bg); }
+
+.home-search { background: var(--search-bg); }
+.home-search .search-arrow { color: var(--text-3); }
+.transaction-search-box { background: var(--search-bg); }
+.transaction-search-input::placeholder { color: var(--text-3) !important; }
+
+.tab.active { color: var(--tab-active); }
+
+.btn-save,
+.keypad-save { color: var(--on-primary); box-shadow: 0 8px 20px rgba(var(--p-rgb), .25); }
+.onboarding-cta,
+.settings-hero-btn { color: var(--on-primary); box-shadow: 0 14px 28px rgba(var(--p-rgb), .22); }
+.type-btn.active { background: var(--c-primary); border-color: var(--c-primary); color: var(--on-primary); }
+
+input.input:focus,
+.input:focus { box-shadow: 0 0 0 4px rgba(var(--p-rgb), .16) !important; }
+
+.home-avatar-glow { background: rgba(var(--p-rgb), .16); box-shadow: 0 0 0 24px rgba(var(--p-rgb), .06); }
+
+.overview-budget-progress { background: var(--fill-2); }
+.tx-item:active { background: var(--card); }
+.account-mini-card.archived { background: var(--fill-1); color: var(--text-2); }
+.account-section-dot { box-shadow: 7px 0 0 rgba(var(--p-rgb), .45); }
+
+.entry-icon-trend { color: var(--transfer-deep); background: var(--c-transfer-surface); }
+.entry-icon-add { color: var(--c-primary-dark); background: var(--c-primary-light); }
+
+.add-type-tabs button.active.expense { color: var(--c-primary-dark); background: var(--c-primary-light); }
+.add-type-tabs button.active.income { color: var(--income-deep); background: var(--c-success-surface); }
+.add-type-tabs button.active.transfer { color: var(--transfer-deep); background: var(--c-transfer-surface); }
+
+.amount-display.amount-compact::after { background: rgba(var(--p-rgb), .20); }
+.amount-compact .value.is-empty { color: var(--text-3); }
+
+.cat-item.selected .cat-icon { background: var(--c-primary) !important; color: var(--on-primary) !important; box-shadow: 0 7px 14px rgba(var(--p-rgb), .22); }
+.category-icon-grid .cat-item.selected .cat-icon { background: var(--c-primary); color: var(--on-primary); }
+
+.keypad-row .keypad { background: var(--keypad-bg); }
+.keypad-row .keypad button:active { background: var(--c-primary-light); }
+
+.stats-overview[data-view="expense"] .expense-metric .text-lg { color: var(--c-primary-dark); }
+.stats-balance-pill { color: var(--on-primary); box-shadow: 0 7px 16px rgba(var(--p-rgb), .2); }
+.income-tag { background: var(--c-success-surface); color: var(--income-deep); }
+
+.onboarding-card { background: var(--surface-warm); }
+
+.budget-progress > i { background: var(--card); }
+
+.toast { background: rgba(24, 26, 32, .92); }
+
+html[data-theme="dark"] .amount-display.amount-compact,
+html[data-theme="dark"] .add-field .input,
+html[data-theme="dark"] .transaction-filter-chip,
+html[data-theme="dark"] .keypad-row .keypad button { background-color: var(--card); }
+html[data-theme="dark"] .hero-account-chip,
+html[data-theme="dark"] .account-summary-card .summary-sub-label,
+html[data-theme="dark"] .summary-card,
+html[data-theme="dark"] .asset-snapshot { color: var(--text); }
+html[data-theme="dark"] .summary-card .summary-sub-amount,
+html[data-theme="dark"] .summary-card .summary-month { color: rgba(255,255,255,.92); }
+
+/* ===== v2.2.0 外观选择器（设置页） ===== */
+.appearance-card { margin-bottom: 12px; }
+.theme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+.theme-tile {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--fill-1);
+  border: 2px solid transparent;
+  transition: border-color .15s, transform .12s;
+}
+.theme-tile:active { transform: scale(.97); }
+.theme-tile.active { border-color: var(--c-primary); background: var(--c-primary-light); }
+.theme-preview {
+  width: 100%; height: 44px;
+  border-radius: 10px;
+  display: flex; align-items: flex-end; justify-content: flex-end; gap: 5px;
+  padding: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+}
+.theme-preview i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.theme-name { font-size: 12.5px; font-weight: 600; color: var(--text); line-height: 1; }
+.theme-check {
+  position: absolute; top: 8px; right: 8px;
+  width: 19px; height: 19px; border-radius: 50%;
+  background: var(--c-primary); color: var(--on-primary);
+  font-size: 11px; font-weight: 700;
+  display: none; align-items: center; justify-content: center;
+}
+.theme-tile.active .theme-check { display: flex; }
