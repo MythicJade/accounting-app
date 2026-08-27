@@ -1,6 +1,6 @@
 {
   "name": "accounting-app",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "个人离线记账 PWA 应用",
   "type": "module",
   "private": true,

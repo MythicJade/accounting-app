@@ -1,5 +1,5 @@
-/* My Accounting PWA v2.3.0-r2 application shell. */
-const CACHE_NAME = 'accounting-v2.3.0-r2';
+/* My Accounting PWA v2.3.1 application shell. */
+const CACHE_NAME = 'accounting-v2.3.1';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -40,7 +40,12 @@ const PRECACHE_URLS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE_URLS))
+      // v2.3.1: 预缓存完成即自动接管，无需用户确认，避免设备滞留旧版本
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
