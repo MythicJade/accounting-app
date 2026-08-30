@@ -25,6 +25,10 @@ function pieColors() {
 }
 
 export function drawPieChart(canvas, data, options = {}) {
+  if (canvas._pieAnimationFrame) cancelAnimationFrame(canvas._pieAnimationFrame);
+  canvas._pieAnimationFrame = 0;
+  canvas._pieAnimating = false;
+
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 220;
@@ -32,8 +36,6 @@ export function drawPieChart(canvas, data, options = {}) {
   canvas.width = cssW * dpr;
   canvas.height = cssH * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cssW, cssH);
-
   const C = pieColors();
   const total = data.reduce((s, d) => s + d.value, 0);
   const cx = cssW / 2;
@@ -46,7 +48,37 @@ export function drawPieChart(canvas, data, options = {}) {
   canvas._pieGeom = { cx, cy, radius, innerRadius };
   canvas._pieOnSelect = options.onSelect;
 
+  // Click handler is registered once and always reads the latest geometry.
+  if (!canvas._pieHandlerBound) {
+    canvas._pieHandlerBound = true;
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('click', (e) => {
+      const geom = canvas._pieGeom;
+      const onSelect = canvas._pieOnSelect;
+      const sl = canvas._pieSlices || [];
+      if (!geom || !onSelect || canvas._pieAnimating) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left - geom.cx;
+      const y = e.clientY - rect.top - geom.cy;
+      const dist = Math.sqrt(x * x + y * y);
+      if (dist < geom.innerRadius || dist > geom.radius + 6) {
+        onSelect(null);
+        return;
+      }
+      let angle = Math.atan2(y, x);
+      if (angle < -Math.PI / 2) angle += Math.PI * 2;
+      for (const s of sl) {
+        if (angle >= s.startAngle && angle <= s.endAngle) {
+          onSelect(s.index);
+          return;
+        }
+      }
+      onSelect(null);
+    });
+  }
+
   if (total <= 0) {
+    ctx.clearRect(0, 0, cssW, cssH);
     canvas._pieSlices = [];
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -78,97 +110,93 @@ export function drawPieChart(canvas, data, options = {}) {
     });
     startAngle = endAngle;
   });
-  // Cache slices for click handler
-  canvas._pieSlices = slices;
+  function paint(rotation = 0) {
+    ctx.clearRect(0, 0, cssW, cssH);
+    const rotated = slices.map(slice => ({
+      ...slice,
+      startAngle: slice.startAngle + rotation,
+      endAngle: slice.endAngle + rotation,
+      midAngle: slice.midAngle + rotation
+    }));
+    canvas._pieSlices = rotated;
 
-  // Draw slices (donut shape)
-  slices.forEach(s => {
-    const isSelected = options.selected === s.index;
-    const outerR = isSelected ? radius + 4 : radius;
-    ctx.beginPath();
-    ctx.arc(cx, cy, outerR, s.startAngle, s.endAngle);
-    ctx.arc(cx, cy, innerRadius, s.endAngle, s.startAngle, true);
-    ctx.closePath();
-    ctx.fillStyle = s.color;
-    ctx.fill();
-    if (isSelected) {
-      ctx.strokeStyle = C.card;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  });
-
-  // Draw leader lines for top 3 slices (by value)
-  const topN = options.topLabels != null ? options.topLabels : 3;
-  const topSlices = [...slices].sort((a, b) => b.value - a.value).slice(0, topN);
-  topSlices.forEach(s => {
-    drawLeaderLabel(ctx, cx, cy, radius, s, options.selected === s.index, C);
-  });
-
-  // Center content
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const sel = options.selected != null ? slices.find(x => x.index === options.selected) : null;
-  if (sel) {
-    // Show selected slice label + value + pct
-    ctx.fillStyle = sel.color;
-    ctx.font = 'bold 13px sans-serif';
-    // truncate label if too long
-    let lbl = sel.label || '';
-    const maxW = innerRadius * 1.6;
-    if (ctx.measureText(lbl).width > maxW) {
-      while (lbl.length > 1 && ctx.measureText(lbl + '…').width > maxW) {
-        lbl = lbl.slice(0, -1);
+    rotated.forEach(s => {
+      const isSelected = options.selected === s.index;
+      const outerR = isSelected ? radius + 4 : radius;
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, s.startAngle, s.endAngle);
+      ctx.arc(cx, cy, innerRadius, s.endAngle, s.startAngle, true);
+      ctx.closePath();
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      if (isSelected) {
+        ctx.strokeStyle = C.card;
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
-      lbl += '…';
+    });
+
+    const topN = options.topLabels != null ? options.topLabels : 3;
+    [...rotated].sort((a, b) => b.value - a.value).slice(0, topN).forEach(s => {
+      drawLeaderLabel(ctx, cx, cy, radius, s, options.selected === s.index, C);
+    });
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const sel = options.selected != null ? rotated.find(x => x.index === options.selected) : null;
+    if (sel) {
+      ctx.fillStyle = sel.color;
+      ctx.font = 'bold 13px sans-serif';
+      let lbl = sel.label || '';
+      const maxW = innerRadius * 1.6;
+      if (ctx.measureText(lbl).width > maxW) {
+        while (lbl.length > 1 && ctx.measureText(lbl + '…').width > maxW) lbl = lbl.slice(0, -1);
+        lbl += '…';
+      }
+      ctx.fillText(lbl, cx, cy - 16);
+      ctx.fillStyle = C.text;
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillText(formatMoneyShort(sel.value), cx, cy + 2);
+      ctx.fillStyle = C.text3;
+      ctx.font = '11px sans-serif';
+      ctx.fillText(Math.round(sel.pct * 100) + '%', cx, cy + 20);
+    } else {
+      ctx.fillStyle = C.text;
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(formatMoneyShort(total), cx, cy - 6);
+      ctx.fillStyle = C.text3;
+      ctx.font = '11px sans-serif';
+      ctx.fillText('总计', cx, cy + 14);
     }
-    ctx.fillText(lbl, cx, cy - 16);
-
-    ctx.fillStyle = C.text;
-    ctx.font = 'bold 17px sans-serif';
-    ctx.fillText(formatMoneyShort(sel.value), cx, cy + 2);
-
-    ctx.fillStyle = C.text3;
-    ctx.font = '11px sans-serif';
-    ctx.fillText(Math.round(sel.pct * 100) + '%', cx, cy + 20);
-  } else {
-    // Default: total
-    ctx.fillStyle = C.text;
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(formatMoneyShort(total), cx, cy - 6);
-    ctx.fillStyle = C.text3;
-    ctx.font = '11px sans-serif';
-    ctx.fillText('总计', cx, cy + 14);
   }
 
-  // Click handler (only register once; reads latest geometry from canvas instance)
-  if (!canvas._pieHandlerBound) {
-    canvas._pieHandlerBound = true;
-    canvas.style.cursor = 'pointer';
-    canvas.addEventListener('click', (e) => {
-      const geom = canvas._pieGeom;
-      const onSelect = canvas._pieOnSelect;
-      const sl = canvas._pieSlices || [];
-      if (!geom || !onSelect) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left - geom.cx;
-      const y = e.clientY - rect.top - geom.cy;
-      const dist = Math.sqrt(x * x + y * y);
-      if (dist < geom.innerRadius || dist > geom.radius + 6) {
-        onSelect(null);
-        return;
+  const signature = JSON.stringify([
+    cssW, cssH,
+    data.map(d => [d.label, d.value, d.color || C.primary])
+  ]);
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const shouldAnimate = canvas._pieAnimationSignature !== signature && !reduceMotion;
+  canvas._pieAnimationSignature = signature;
+
+  if (shouldAnimate) {
+    const duration = 680;
+    const startedAt = performance.now();
+    canvas._pieAnimating = true;
+    const frame = now => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      paint(-Math.PI * 2 * (1 - eased));
+      if (progress < 1) {
+        canvas._pieAnimationFrame = requestAnimationFrame(frame);
+      } else {
+        canvas._pieAnimationFrame = 0;
+        canvas._pieAnimating = false;
+        paint(0);
       }
-      let angle = Math.atan2(y, x);
-      // normalize to start from -PI/2 (top)
-      if (angle < -Math.PI / 2) angle += Math.PI * 2;
-      for (const s of sl) {
-        if (angle >= s.startAngle && angle <= s.endAngle) {
-          onSelect(s.index);
-          return;
-        }
-      }
-      onSelect(null);
-    });
+    };
+    canvas._pieAnimationFrame = requestAnimationFrame(frame);
+  } else {
+    paint(0);
   }
 
   return slices;

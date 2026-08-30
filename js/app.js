@@ -10,7 +10,7 @@ import { renderSettings } from './views/settings.js';
 import { renderAccounts } from './views/accounts.js';
 import { renderAccountDetail } from './views/account-detail.js';
 import { renderAssetsTrend } from './views/assets-trend.js';
-import { renderCategories } from './views/categories.js';
+import { renderCategories, renderCategoryEditor } from './views/categories.js';
 import { renderTransactions } from './views/transactions.js';
 import { registerPWA } from './pwa.js';
 import { applySavedTheme } from './theme.js';
@@ -31,6 +31,8 @@ router.register('/accounts', renderAccounts);
 router.register('/accounts/:id', renderAccountDetail);
 router.register('/assets', renderAssetsTrend);
 router.register('/categories', renderCategories);
+router.register('/categories/new/:type', renderCategoryEditor);
+router.register('/categories/edit/:id', renderCategoryEditor);
 router.register('/transactions', renderTransactions);
 
 async function main() {

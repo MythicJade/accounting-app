@@ -50,7 +50,7 @@ function getHomePref(key, fallback = '1') {
 export async function renderHome(mount) {
   const monthKey = currentMonthSafe();
   const summary = await monthlySummary(monthKey, null);
-  const recent = await listTransactions({ limit: 30 });
+  const recent = await listTransactions({ limit: 200 });
   const [catMap, accMap, activeAccounts, activeCategories] = await Promise.all([
     getCategoriesMap(),
     getAccountsMap(),
@@ -151,7 +151,7 @@ export async function renderHome(mount) {
       const svg = el('svg', { class: 'gauge-svg', viewBox: '0 0 200 104', 'aria-hidden': 'true' }, []);
       svg.innerHTML =
         `<path d="M 22 96 A 78 78 0 0 1 178 96" fill="none" stroke="var(--fill-2)" stroke-width="11" stroke-linecap="round"/>` +
-        `<path d="M 22 96 A 78 78 0 0 1 178 96" fill="none" stroke="${arcColor}" stroke-width="11" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - arcPct}" style="transition:stroke-dashoffset .4s ease"/>`;
+        `<path class="gauge-progress" d="M 22 96 A 78 78 0 0 1 178 96" fill="none" stroke="${arcColor}" stroke-width="11" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - arcPct}" style="--gauge-offset:${100 - arcPct}"/>`;
 
       let leftVal, leftLabel, centerVal, centerLabel;
       if (limit > 0) {

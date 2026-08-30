@@ -1,9 +1,10 @@
 // js/views/categories.js — 分类管理页面（支出/收入分类 CRUD + 图标颜色）
-import { listCategories, addCategory, updateCategory, deleteCategory, archiveCategory, restoreCategory } from '../categories.js';
-import { toast, confirmDialog, showModal, el } from '../ui.js';
+import { listCategories, getCategory, addCategory, updateCategory, deleteCategory, archiveCategory, restoreCategory } from '../categories.js';
+import { toast, confirmDialog, el } from '../ui.js';
 import { CATEGORY_ICON_OPTIONS, categoryIconNode, resolveCategoryIconKey, ICON_GROUPS, ICON_META } from '../category-icons.js';
 
-const COLORS = ['#F36F62','#C77C86','#A56C8E','#5BC0D0','#26B982','#15A6A1','#93BF38','#FFC62E','#F39B35','#6677E8'];
+const COLORS = ['#FFC62E','#FFD36B','#FFAE72','#FFA526','#FF7248','#FF94A8','#F36AA8','#C77C86','#A56C8E','#5BC0D0','#26B982','#15A6A1','#93BF38','#6677E8'];
+const MAX_NAME_LENGTH = 4;
 
 export async function renderCategories(mount) {
   let currentType = 'expense';
@@ -70,185 +71,199 @@ export async function renderCategories(mount) {
     renderGrid();
   }
 
-  async function onAdd() {
-    await showCategoryForm(null);
+  function onAdd() {
+    const type = currentType === 'income' ? 'income' : 'expense';
+    location.hash = `#/categories/new/${type}`;
   }
-  async function onEdit(c) {
-    await showCategoryForm(c);
+  function onEdit(c) {
+    location.hash = `#/categories/edit/${encodeURIComponent(c.id)}`;
+  }
+}
+
+export async function renderCategoryEditor(mount, params = {}) {
+  const isEdit = Boolean(params.id);
+  const category = isEdit ? await getCategory(params.id) : null;
+  if (isEdit && !category) {
+    toast('分类不存在');
+    location.hash = '#/categories';
+    return;
   }
 
-  async function showCategoryForm(cat) {
-    const isEdit = !!cat;
-    const form = el('div', { class: 'category-form' });
+  const selectedType = category?.type || (params.type === 'income' ? 'income' : 'expense');
+  const exactOption = category ? CATEGORY_ICON_OPTIONS.find(option => option.token === category.icon) : null;
+  const compatibleOption = category ? CATEGORY_ICON_OPTIONS.find(option => option.key === resolveCategoryIconKey(category)) : null;
+  let selectedIcon = exactOption?.token || compatibleOption?.token || (selectedType === 'income' ? ICON_META.salary.token : ICON_META.food.token);
+  let selectedColor = category?.color || COLORS[0];
+  let selectedKey = CATEGORY_ICON_OPTIONS.find(option => option.token === selectedIcon)?.key || (selectedType === 'income' ? 'salary' : 'food');
+  let activeGroupId = ICON_GROUPS.find(group => group.keys.includes(selectedKey))?.id || ICON_GROUPS[0].id;
+  let saving = false;
 
-    const nameInput = el('input', { class: 'category-name-input', type: 'text', 'aria-label': '分类名称', placeholder: '输入分类名称', value: cat ? cat.name : '', maxlength: 8 });
-    // 类型选择（编辑时锁定，避免类型与流水不匹配）
-    let selectedType = cat ? cat.type : (currentType === 'income' ? 'income' : 'expense');
-    const typeRow = el('div', { class: 'type-tabs type-tabs-2', style: 'margin:8px 0;' });
-    const tExp = el('button', { class: selectedType === 'expense' ? 'active expense' : '', text: '支出', onclick: () => { if (isEdit) return; selectedType = 'expense'; tExp.className = 'active expense'; tInc.className = ''; } });
-    const tInc = el('button', { class: selectedType === 'income' ? 'active income' : '', text: '收入', onclick: () => { if (isEdit) return; selectedType = 'income'; tInc.className = 'active income'; tExp.className = ''; } });
-    if (isEdit) {
-      tExp.style.opacity = '0.5';
-      tInc.style.opacity = '0.5';
-      tExp.style.cursor = 'not-allowed';
-      tInc.style.cursor = 'not-allowed';
-    }
-    typeRow.append(tExp, tInc);
+  const editor = el('section', { class: 'category-editor-page', tabindex: '-1', 'aria-label': isEdit ? '编辑分类' : '添加分类' });
+  const backButton = el('button', { class: 'category-editor-back', type: 'button', 'aria-label': '返回分类管理', onclick: () => { location.hash = '#/categories'; } }, [
+    el('svg', { viewBox: '0 0 24 24', width: '28', height: '28', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'aria-hidden': 'true', html: '<path d="m15 5-7 7 7 7"/>' })
+  ]);
+  const headerActions = el('div', { class: 'category-editor-head-actions' });
+  const header = el('header', { class: 'category-editor-head' }, [
+    backButton,
+    el('h1', { text: isEdit ? '编辑分类' : '添加分类' }),
+    headerActions
+  ]);
 
-    const exactOption = cat ? CATEGORY_ICON_OPTIONS.find(option => option.token === cat.icon) : null;
-    const compatibleOption = cat ? CATEGORY_ICON_OPTIONS.find(option => option.key === resolveCategoryIconKey(cat)) : null;
-    let selectedIcon = exactOption?.token || compatibleOption?.token || (selectedType === 'income' ? '💼' : '🍜');
-    let selectedColor = cat ? cat.color : '#F36F62';
+  const previewIcon = el('span', { class: 'category-editor-preview', 'aria-hidden': 'true' });
+  const nameInput = el('input', {
+    class: 'category-editor-name', type: 'text', value: category?.name || '',
+    placeholder: '请输入分类名称', maxlength: String(MAX_NAME_LENGTH),
+    'aria-label': '分类名称', autocomplete: 'off', enterkeyhint: 'done'
+  });
+  const nameCount = el('span', { class: 'category-editor-count' });
+  const nameCard = el('div', { class: 'category-editor-name-card' }, [previewIcon, nameInput, nameCount]);
 
-    const previewIcon = el('div', { class: 'category-preview-icon' });
-    const nameCount = el('span', { class: 'category-name-count', text: `${nameInput.value.length}/8` });
-    const nameEditor = el('div', { class: 'category-name-editor' }, [previewIcon, nameInput, nameCount]);
+  const colorRow = el('div', { class: 'category-editor-colors', role: 'radiogroup', 'aria-label': '分类颜色' });
+  const colorCard = el('section', { class: 'category-editor-color-card' }, [colorRow]);
+  const groupRail = el('div', { class: 'category-editor-groups', role: 'tablist', 'aria-label': '图标分组' });
+  const iconGrid = el('div', { class: 'category-editor-icons', role: 'listbox', 'aria-label': '分类图标' });
+  const iconPicker = el('div', { class: 'category-editor-picker' }, [groupRail, iconGrid]);
 
-    function updatePreview() {
-      previewIcon.style.background = `${selectedColor}18`;
-      previewIcon.style.color = selectedColor;
-      previewIcon.replaceChildren(categoryIconNode({ icon: selectedIcon, name: nameInput.value }, { size: 25 }));
-      nameCount.textContent = `${nameInput.value.length}/8`;
-    }
-    nameInput.addEventListener('input', updatePreview);
+  const secondaryButton = el('button', {
+    class: 'category-editor-action secondary', type: 'button',
+    text: isEdit ? (category.archived ? '恢复分类' : '归档分类') : '继续添加',
+    onclick: () => { if (isEdit) toggleArchive(); else saveCategory(true); }
+  });
+  const saveButton = el('button', { class: 'category-editor-action primary', type: 'button', text: '保存', onclick: () => saveCategory(false) });
+  const actionBar = el('footer', { class: 'category-editor-actions' }, [secondaryButton, saveButton]);
 
-    // v2.1.2 图标选择器：分组展示 + 关键字搜索
-    const iconSearch = el('input', {
-      class: 'input icon-search-input',
-      type: 'text',
-      placeholder: '搜索图标，如：咖啡 / 宠物 / 旅行',
-      maxlength: 12,
-      'aria-label': '搜索图标'
-    });
-    const iconSection = el('div', { class: 'category-icon-section', role: 'listbox', 'aria-label': '图标列表' });
+  editor.append(
+    header,
+    el('div', { class: 'category-editor-scroll' }, [
+      nameCard,
+      colorCard,
+      el('div', { class: 'category-editor-label', text: '分类图标' }),
+      iconPicker
+    ]),
+    actionBar
+  );
+  mount.appendChild(editor);
+  document.body.classList.add('route-category-editor');
 
-    function buildIconNode(option) {
-      return el('button', { class: 'cat-item' + (selectedIcon === option.token ? ' selected' : ''), type: 'button', 'aria-label': `选择${option.label}图标`, onclick: () => { selectedIcon = option.token; renderIcons(); } }, [
-        el('div', { class: 'cat-icon category-line-icon' }, [categoryIconNode({ icon: option.token, name: option.label }, { size: 23 })]),
-        el('div', { class: 'cat-name', text: option.label })
-      ]);
-    }
-    function renderIcons() {
-      const q = iconSearch.value.trim();
-      iconSection.innerHTML = '';
-      if (q) {
-        // 搜索模式：跨分组平铺匹配结果
-        const matches = CATEGORY_ICON_OPTIONS.filter(o => o.label.includes(q));
-        if (matches.length) {
-          const grid = el('div', { class: 'cat-grid category-icon-grid category-icon-grid--flat' });
-          matches.forEach(option => grid.appendChild(buildIconNode(option)));
-          iconSection.appendChild(grid);
-        } else {
-          iconSection.appendChild(el('div', { class: 'icon-search-empty' }, [
-            el('p', { text: `没有匹配「${q}」的图标` })
-          ]));
-        }
+  if (isEdit) {
+    headerActions.appendChild(el('button', { class: 'category-editor-delete', type: 'button', text: '删除', onclick: deleteCurrent }));
+  } else {
+    headerActions.appendChild(el('span', { class: 'category-editor-head-spacer' }));
+  }
+
+  function refreshPreview() {
+    previewIcon.style.background = selectedColor;
+    previewIcon.replaceChildren(categoryIconNode({ icon: selectedIcon, name: nameInput.value }, { size: 29 }));
+    nameCount.textContent = `${nameInput.value.length}/${MAX_NAME_LENGTH}`;
+    nameCount.classList.toggle('over', nameInput.value.length > MAX_NAME_LENGTH);
+  }
+
+  function renderColors() {
+    colorRow.replaceChildren(...COLORS.map(color => el('button', {
+      class: 'category-editor-swatch' + (selectedColor === color ? ' selected' : ''),
+      type: 'button', role: 'radio', 'aria-checked': String(selectedColor === color),
+      'aria-label': `选择颜色 ${color}`, style: `--swatch:${color}`,
+      onclick: () => { selectedColor = color; renderColors(); refreshPreview(); }
+    }, selectedColor === color ? [el('span', { text: '✓', 'aria-hidden': 'true' })] : [])));
+  }
+
+  function renderGroups() {
+    groupRail.replaceChildren(...ICON_GROUPS.map(group => el('button', {
+      class: 'category-editor-group' + (activeGroupId === group.id ? ' active' : ''),
+      type: 'button', role: 'tab', 'aria-selected': String(activeGroupId === group.id),
+      text: group.short || group.label.slice(0, 1),
+      'aria-label': group.label,
+      onclick: () => { activeGroupId = group.id; renderGroups(); renderIcons(); }
+    })));
+  }
+
+  function renderIcons() {
+    const group = ICON_GROUPS.find(item => item.id === activeGroupId) || ICON_GROUPS[0];
+    iconGrid.replaceChildren(...group.keys.map(key => {
+      const meta = ICON_META[key];
+      const selected = selectedIcon === meta.token;
+      return el('button', {
+        class: 'category-editor-icon' + (selected ? ' selected' : ''), type: 'button',
+        role: 'option', 'aria-selected': String(selected), 'aria-label': `选择${meta.label}图标`,
+        onclick: () => { selectedIcon = meta.token; selectedKey = key; renderIcons(); refreshPreview(); }
+      }, [categoryIconNode({ icon: meta.token, name: meta.label }, { size: 27 }), el('span', { text: meta.label })]);
+    }));
+    iconGrid.scrollTop = 0;
+  }
+
+  nameInput.addEventListener('input', refreshPreview);
+  renderColors();
+  renderGroups();
+  renderIcons();
+  refreshPreview();
+
+  async function saveCategory(keepAdding) {
+    if (saving) return;
+    const name = nameInput.value.trim();
+    if (!name) { toast('请输入分类名称'); return; }
+    if (name.length > MAX_NAME_LENGTH) { toast(`分类名称最多 ${MAX_NAME_LENGTH} 个字`); return; }
+    saving = true;
+    saveButton.disabled = true;
+    secondaryButton.disabled = true;
+    try {
+      const payload = { name, type: selectedType, icon: selectedIcon, color: selectedColor };
+      if (isEdit) {
+        await updateCategory(category.id, payload);
+        toast('分类已更新');
       } else {
-        ICON_GROUPS.forEach(group => {
-          const sec = el('div', { class: 'icon-group' });
-          sec.appendChild(el('div', { class: 'icon-group-label', text: group.label }));
-          const grid = el('div', { class: 'cat-grid category-icon-grid' });
-          group.keys.forEach(key => {
-            grid.appendChild(buildIconNode({ key, token: ICON_META[key].token, label: ICON_META[key].label }));
-          });
-          sec.appendChild(grid);
-          iconSection.appendChild(sec);
-        });
+        await addCategory(payload);
+        toast('分类已添加');
       }
-      updatePreview();
-    }
-    iconSearch.addEventListener('input', () => renderIcons());
-    renderIcons();
-
-    const colorRow = el('div', { class: 'category-color-row' });
-    function renderColors() {
-      colorRow.innerHTML = '';
-      COLORS.forEach(c => {
-        const sw = el('button', { class: 'category-color-swatch' + (selectedColor === c ? ' selected' : ''), type: 'button', 'aria-label': `选择颜色 ${c}`, style: `--swatch:${c}`, onclick: () => { selectedColor = c; renderColors(); } });
-        colorRow.appendChild(sw);
-      });
-      updatePreview();
-    }
-    renderColors();
-
-    form.append(
-      nameEditor,
-      el('div', { class: 'text-sm text-2', style: 'margin:12px 0 4px;', text: '类型' }),
-      typeRow,
-      el('div', { class: 'category-form-label', text: '选择图标' }),
-      iconSearch,
-      iconSection,
-      el('div', { class: 'category-form-label', text: '选择颜色' }),
-      colorRow
-    );
-
-    const result = await showModal({
-      title: isEdit ? '编辑分类' : '新增分类',
-      body: form,
-      actions: [
-        { label: '取消', type: 'ghost', value: 'cancel' },
-        ...(isEdit ? [{ label: cat.archived ? '恢复' : '归档', type: 'ghost', value: cat.archived ? 'restore' : 'archive' }] : []),
-        ...(isEdit ? [{ label: '永久删除', type: 'danger', value: 'delete' }] : []),
-        { label: '保存', type: 'primary', value: 'save', onClick: () => {
-          if (!nameInput.value.trim()) { toast('请输入分类名称'); return false; }
-        } }
-      ]
-    });
-
-    if (result === 'save') {
-      const payload = {
-        name: nameInput.value.trim(),
-        type: selectedType,
-        icon: selectedIcon,
-        color: selectedColor
-      };
-      try {
-        if (isEdit) {
-          await updateCategory(cat.id, payload);
-          toast('已更新');
-        } else {
-          await addCategory(payload);
-          toast('已新增');
-        }
-        cats = currentType === 'archived'
-          ? (await listCategories(null, { includeArchived: true })).filter(category => category.archived)
-          : await listCategories(currentType);
-        renderGrid();
-      } catch (e) {
-        toast('保存失败：' + (e.message || e));
+      if (keepAdding && !isEdit) {
+        nameInput.value = '';
+        selectedIcon = selectedType === 'income' ? ICON_META.salary.token : ICON_META.food.token;
+        selectedKey = selectedType === 'income' ? 'salary' : 'food';
+        activeGroupId = ICON_GROUPS.find(group => group.keys.includes(selectedKey))?.id || ICON_GROUPS[0].id;
+        renderGroups();
+        renderIcons();
+        refreshPreview();
+        editor.focus({ preventScroll: true });
+      } else {
+        location.hash = '#/categories';
       }
-    } else if (result === 'archive') {
-      try {
-        await archiveCategory(cat.id);
-        toast('分类已归档，历史流水仍保留');
-        cats = await listCategories(currentType);
-        renderGrid();
-      } catch (e) {
-        toast('归档失败：' + (e.message || e));
-      }
-    } else if (result === 'restore') {
-      try {
-        await restoreCategory(cat.id);
-        toast('分类已恢复');
-        cats = (await listCategories(null, { includeArchived: true })).filter(category => category.archived);
-        renderGrid();
-      } catch (e) {
-        toast('恢复失败：' + (e.message || e));
-      }
-    } else if (result === 'delete') {
-      const ok = await confirmDialog('只有未关联任何流水的分类才能永久删除。确定继续吗？', { danger: true, okText: '永久删除' });
-      if (ok) {
-        try {
-          await deleteCategory(cat.id);
-          toast('已删除');
-          cats = currentType === 'archived'
-            ? (await listCategories(null, { includeArchived: true })).filter(category => category.archived)
-            : await listCategories(currentType);
-          renderGrid();
-        } catch (e) {
-          toast('删除失败：' + (e.message || e));
-        }
-      }
+    } catch (error) {
+      toast('保存失败：' + (error.message || error));
+    } finally {
+      saving = false;
+      saveButton.disabled = false;
+      secondaryButton.disabled = false;
     }
   }
+
+  async function toggleArchive() {
+    if (saving) return;
+    try {
+      if (category.archived) {
+        await restoreCategory(category.id);
+        toast('分类已恢复');
+      } else {
+        await archiveCategory(category.id);
+        toast('分类已归档，历史流水仍保留');
+      }
+      location.hash = '#/categories';
+    } catch (error) {
+      toast('操作失败：' + (error.message || error));
+    }
+  }
+
+  async function deleteCurrent() {
+    const ok = await confirmDialog('只有未关联任何流水的分类才能永久删除。确定继续吗？', { danger: true, okText: '永久删除' });
+    if (!ok) return;
+    try {
+      await deleteCategory(category.id);
+      toast('分类已删除');
+      location.hash = '#/categories';
+    } catch (error) {
+      toast('删除失败：' + (error.message || error));
+    }
+  }
+
+  return () => {
+    document.body.classList.remove('route-category-editor');
+  };
 }
