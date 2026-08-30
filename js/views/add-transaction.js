@@ -63,7 +63,7 @@ export async function renderAddTransaction(mount, params = {}) {
   const amtVal = el('span', { class: 'amt-val is-empty', text: '0' });
   const amtBar = el('div', { class: 'amt-bar' }, [amtIcon, amtName, amtVal]);
 
-  function refreshAmtBar() {
+  function refreshAmtBar(animate = false) {
     if (state.type === 'transfer') {
       amtIcon.style.background = 'var(--transfer)';
       amtIcon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 8h9l-2.6-2.6M17.5 16h-9l2.6 2.6"/></svg>';
@@ -77,6 +77,10 @@ export async function renderAddTransaction(mount, params = {}) {
     }
     amtVal.textContent = state.expr || '0';
     amtVal.className = 'amt-val' + (state.expr ? '' : ' is-empty');
+    if (animate) {
+      void amtVal.offsetWidth;
+      amtVal.classList.add('is-updating');
+    }
   }
 
   // ===== 分类瓷砖（5 列 × 2 行，横向滑页） =====
@@ -114,7 +118,7 @@ export async function renderAddTransaction(mount, params = {}) {
           tile = el('button', {
             class: 'cat-tile' + (state.categoryId === c.id ? ' selected' : ''), type: 'button',
             'aria-label': c.name,
-            onclick: () => { state.categoryId = c.id; vibrate(8); renderTiles(); refreshAmtBar(); }
+            onclick: () => { state.categoryId = c.id; vibrate(8); renderTiles(); refreshAmtBar(true); }
           }, [
             el('span', { class: 'cube' }, [categoryIconNode(c, { size: 24 })]),
             el('span', { class: 't-label', text: c.name })
@@ -325,7 +329,7 @@ export async function renderAddTransaction(mount, params = {}) {
       }
     }
     if (state.expr.length > 24) state.expr = state.expr.slice(0, 24);
-    refreshAmtBar();
+    refreshAmtBar(true);
   }
   function currentSegment() {
     const m = state.expr.split(/[+-]/);
@@ -390,6 +394,9 @@ export async function renderAddTransaction(mount, params = {}) {
     if (state.type === t) return;
     state.type = t;
     refreshType();
+    main.classList.remove('is-switching');
+    void main.offsetWidth;
+    main.classList.add('is-switching');
   }
 
   renderTiles();
@@ -454,7 +461,7 @@ export async function renderAddTransaction(mount, params = {}) {
       vibrate(15);
       if (continueEditing && !editId) {
         state.expr = '';
-        refreshAmtBar();
+        refreshAmtBar(true);
         return;
       }
       setTimeout(() => { location.hash = '#/'; }, 250);

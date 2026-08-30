@@ -4,6 +4,7 @@ export class Router {
     this.mount = mountEl;
     this.routes = [];
     this.currentCleanup = null;
+    this.enterAnimationTimer = null;
   }
 
   register(pattern, handler) {
@@ -56,6 +57,7 @@ export class Router {
     window.scrollTo(0, 0);
     if (!matched) {
       this.mount.innerHTML = '<div class="empty"><p>页面不存在</p></div>';
+      this.playEnterAnimation();
       return;
     }
     // Show skeleton immediately
@@ -65,11 +67,25 @@ export class Router {
       if (typeof result === 'function') {
         this.currentCleanup = result;
       }
+      this.playEnterAnimation();
       this.mount.focus({ preventScroll: true });
     } catch (e) {
       console.error('Route render error:', e);
       this.mount.innerHTML = '<div class="empty"><p>加载失败：' + (e.message || e) + '</p></div>';
+      this.playEnterAnimation();
     }
+  }
+
+  playEnterAnimation() {
+    if (this.enterAnimationTimer) clearTimeout(this.enterAnimationTimer);
+    this.mount.classList.remove('route-enter');
+    // Restart the short entrance animation when the same route is rendered again.
+    void this.mount.offsetWidth;
+    this.mount.classList.add('route-enter');
+    this.enterAnimationTimer = setTimeout(() => {
+      this.mount.classList.remove('route-enter');
+      this.enterAnimationTimer = null;
+    }, 500);
   }
 
   updateTabbar(hash) {
