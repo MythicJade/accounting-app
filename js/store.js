@@ -1,5 +1,5 @@
-// js/store.js — validated business data access layer (schema v5 / backup v3).
-import { openDB, put, get, getAll, getAllByIndex, deleteRecord, count, atomicWrite, Stores } from './db.js';
+// js/store.js — validated business data access layer (schema v6 / backup v4).
+import { openDB, put, get, getAll, getAllByIndex, getRecentTransactions, readSnapshot, deleteRecord, count, atomicWrite, Stores } from './db.js';
 import { ensureCategories, addCategory, STARTER_CATEGORIES } from './categories.js';
 import { ensureAccounts, addAccount } from './accounts.js';
 import { toCents, fromCents, assertCents } from './money.js';
@@ -17,8 +17,10 @@ export async function initStore() {
 
 // ===== Transactions =====
 export async function addTransaction(input) {
-  const record = await validateTransactionInput(input);
-  return put(Stores.TRANSACTIONS, record);
+  const accountChanges = [];
+  const record = await validateTransactionInput(input, { accountChanges });
+  await createRecoveryPoint('每日自动恢复点', { daily: true });
+  return writeTransaction(record, accountChanges);
 }
 
 export async function updateTransaction(id, patch) {
@@ -31,18 +33,32 @@ export async function updateTransaction(id, patch) {
     createdAt: existing.createdAt,
     updatedAt: Date.now()
   };
+  if (patch.amount != null && patch.amountCents == null) merged.amountCents = toCents(patch.amount, { allowNegative: false });
+  const accountChanges = [];
   if (merged.type === 'transfer') merged.categoryId = null;
   else merged.toAccountId = null;
   const record = await validateTransactionInput(merged, {
     preserveId: true,
+    accountChanges,
     allowArchivedIds: new Set([existing.accountId, existing.toAccountId, existing.categoryId].filter(Boolean))
   });
   record.createdAt = existing.createdAt || Date.now();
   record.updatedAt = Date.now();
-  return put(Stores.TRANSACTIONS, record);
+  await createRecoveryPoint('每日自动恢复点', { daily: true });
+  return writeTransaction(record, accountChanges);
 }
 
-export function deleteTransaction(id) {
+async function writeTransaction(record, accountChanges) {
+  let request;
+  await atomicWrite([Stores.TRANSACTIONS, Stores.ACCOUNTS], stores => {
+    accountChanges.forEach(account => stores[Stores.ACCOUNTS].put(account));
+    request = stores[Stores.TRANSACTIONS].put(record);
+  });
+  return request.result;
+}
+
+export async function deleteTransaction(id) {
+  await createRecoveryPoint('删除流水前');
   return deleteRecord(Stores.TRANSACTIONS, Number(id));
 }
 
@@ -52,6 +68,10 @@ export async function getTransaction(id) {
 }
 
 export async function listTransactions(options = {}) {
+  if (options.limit && !options.returnPage && !options.offset &&
+      !options.dateFrom && !options.dateTo && !options.type && !options.categoryId && !options.accountId && !options.search) {
+    return (await getRecentTransactions(Number(options.limit))).map(hydrateTransaction);
+  }
   let raw;
   if ((options.dateFrom || options.dateTo) && globalThis.IDBKeyRange) {
     const lower = options.dateFrom || '0000-01-01';
@@ -95,15 +115,20 @@ export async function getAllTransactions() {
 
 export async function bulkPutTransactions(records) {
   const prepared = [];
-  for (const record of records) prepared.push(await validateTransactionInput(record, { preserveId: record.id != null }));
-  return atomicWrite([Stores.TRANSACTIONS], stores => prepared.forEach(record => stores[Stores.TRANSACTIONS].put(record)));
+  const accountChanges = [];
+  for (const record of records) prepared.push(await validateTransactionInput(record, { preserveId: record.id != null, accountChanges }));
+  await createRecoveryPoint('批量写入前');
+  return atomicWrite([Stores.TRANSACTIONS, Stores.ACCOUNTS], stores => {
+    accountChanges.forEach(record => stores[Stores.ACCOUNTS].put(record));
+    prepared.forEach(record => stores[Stores.TRANSACTIONS].put(record));
+  });
 }
 
 export function countTransactions() {
   return count(Stores.TRANSACTIONS);
 }
 
-async function validateTransactionInput(input, { preserveId = false, allowArchivedIds = new Set() } = {}) {
+async function validateTransactionInput(input, { preserveId = false, allowArchivedIds = new Set(), accountChanges = [] } = {}) {
   const type = String(input.type || '');
   if (!TRANSACTION_TYPES.has(type)) throw new Error('记账类型无效');
   const amountCents = input.amountCents != null
@@ -117,12 +142,12 @@ async function validateTransactionInput(input, { preserveId = false, allowArchiv
   if (!accountId) throw new Error('请选择账户');
   const account = await get(Stores.ACCOUNTS, accountId);
   if (!account || (account.archived && !allowArchivedIds.has(accountId))) throw new Error('账户不存在或已归档');
-  await alignZeroBalanceOpeningDate(account, date, '账户');
+  alignZeroBalanceOpeningDate(account, date, '账户', accountChanges);
   if (type === 'transfer') {
     if (!toAccountId || toAccountId === accountId) throw new Error('请选择不同的目标账户');
     const target = await get(Stores.ACCOUNTS, toAccountId);
     if (!target || (target.archived && !allowArchivedIds.has(toAccountId))) throw new Error('目标账户不存在或已归档');
-    await alignZeroBalanceOpeningDate(target, date, '目标账户');
+    alignZeroBalanceOpeningDate(target, date, '目标账户', accountChanges);
   } else {
     if (!categoryId) throw new Error('请选择分类');
     const category = await get(Stores.CATEGORIES, categoryId);
@@ -130,6 +155,7 @@ async function validateTransactionInput(input, { preserveId = false, allowArchiv
   }
   const now = Date.now();
   const result = {
+    uid: input.uid || createId('tx'),
     type,
     amountCents,
     categoryId,
@@ -145,14 +171,16 @@ async function validateTransactionInput(input, { preserveId = false, allowArchiv
   return result;
 }
 
-async function alignZeroBalanceOpeningDate(account, date, label) {
+function alignZeroBalanceOpeningDate(account, date, label, accountChanges) {
   if (!account.openingDate || date >= account.openingDate) return;
   if (Number(account.openingBalanceCents || 0) !== 0) {
     throw new Error(`流水日期早于${label}期初日期 ${account.openingDate}，请先调整期初日期`);
   }
   account.openingDate = date;
   account.updatedAt = Date.now();
-  await put(Stores.ACCOUNTS, account);
+  const pending = accountChanges.find(item => item.id === account.id);
+  if (pending) pending.openingDate = pending.openingDate < date ? pending.openingDate : date;
+  else accountChanges.push(account);
 }
 
 export function hydrateTransaction(record) {
@@ -169,6 +197,7 @@ export async function getBudget(monthKey) {
 export async function setBudget(monthKey, limit) {
   monthRange(monthKey);
   const existing = await get(Stores.BUDGETS, monthKey);
+  await createRecoveryPoint('每日自动恢复点', { daily: true });
   return put(Stores.BUDGETS, {
     key: monthKey,
     limitCents: toCents(limit, { allowNegative: false }),
@@ -233,7 +262,11 @@ export async function getAccountBalance(accountId, cutoff = '9999-12-31') {
 }
 
 export async function getAllAccountBalances(cutoff = '9999-12-31') {
-  const [transactions, accounts] = await Promise.all([getAll(Stores.TRANSACTIONS), getAll(Stores.ACCOUNTS)]);
+  const { transactions, accounts } = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS]);
+  return balancesFromSnapshot(transactions, accounts, cutoff);
+}
+
+function balancesFromSnapshot(transactions, accounts, cutoff) {
   const cents = new Map();
   const accountsById = new Map(accounts.map(account => [account.id, account]));
   for (const account of accounts) {
@@ -263,7 +296,12 @@ export async function getTotalBalance(cutoff = '9999-12-31') {
 }
 
 export async function getAssetsSummary(cutoff = '9999-12-31') {
-  const [balances, accounts] = await Promise.all([getAllAccountBalances(cutoff), getAll(Stores.ACCOUNTS)]);
+  const { transactions, accounts } = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS]);
+  return assetsFromSnapshot(transactions, accounts, cutoff);
+}
+
+function assetsFromSnapshot(transactions, accounts, cutoff) {
+  const balances = balancesFromSnapshot(transactions, accounts, cutoff);
   let totalAssetsCents = 0;
   let totalLiabilitiesCents = 0;
   const byTypeCents = { asset: 0, credit: 0 };
@@ -283,6 +321,7 @@ export async function getAssetsSummary(cutoff = '9999-12-31') {
 }
 
 export async function monthlyAssetTrend(year) {
+  const { transactions, accounts } = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS]);
   const numericYear = Number(year);
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -296,13 +335,15 @@ export async function monthlyAssetTrend(year) {
       continue;
     }
     const key = `${numericYear}-${String(month).padStart(2, '0')}`;
-    const summary = await getAssetsSummary(monthRange(key).end);
+    const cutoff = numericYear === currentYear && month === currentMonth ? todayDateOnly() : monthRange(key).end;
+    const summary = assetsFromSnapshot(transactions, accounts, cutoff);
     result.push({ month, label, ...summary });
   }
   return result;
 }
 
 export async function monthlyAccountTrend(accountId, year) {
+  const { transactions, accounts } = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS]);
   const numericYear = Number(year);
   const now = new Date();
   const result = [];
@@ -312,7 +353,7 @@ export async function monthlyAccountTrend(accountId, year) {
     result.push({
       label: `${month}月`,
       fullLabel: `${numericYear}年${month}月`,
-      value: future ? null : await getAccountBalance(accountId, monthRange(key).end)
+      value: future ? null : (balancesFromSnapshot(transactions, accounts, key === todayDateOnly().slice(0, 7) ? todayDateOnly() : monthRange(key).end).get(accountId) || 0)
     });
   }
   return result;
@@ -358,20 +399,77 @@ export async function setupStarterData() {
 
 // ===== Backup / Restore =====
 export async function exportAll() {
-  const [transactions, budgets, categories, accounts] = await Promise.all([
-    getAll(Stores.TRANSACTIONS),
-    getAll(Stores.BUDGETS),
-    getAll(Stores.CATEGORIES),
-    getAll(Stores.ACCOUNTS)
-  ]);
-  return { version: 3, schemaVersion: 5, exportedAt: new Date().toISOString(), transactions, budgets, categories, accounts };
+  const snapshot = await readSnapshot([Stores.TRANSACTIONS, Stores.BUDGETS, Stores.CATEGORIES, Stores.ACCOUNTS]);
+  const data = { version: 4, schemaVersion: 6, exportedAt: new Date().toISOString(), ...snapshot };
+  data.checksum = await backupChecksum(data);
+  return data;
+}
+
+async function backupChecksum(data) {
+  const bytes = new TextEncoder().encode(JSON.stringify([data.transactions, data.budgets, data.categories, data.accounts]));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyBackup(data) {
+  if (Number(data?.version) > 4 || Number(data?.schemaVersion) > 6) throw new Error('备份来自较新版本，请先升级应用');
+  if (data?.checksum && data.checksum !== await backupChecksum(data)) throw new Error('备份完整性校验失败，请使用原始备份文件');
+}
+
+let recoveryQueue = Promise.resolve();
+export function createRecoveryPoint(reason, { daily = false } = {}) {
+  const operation = recoveryQueue.then(async () => {
+    const day = todayDateOnly();
+    if (daily && (await get(Stores.META, 'dailyRecovery'))?.value === day) return;
+    const data = await exportAll();
+    const existing = await getAll(Stores.RECOVERY);
+    const point = { id: createId('recovery'), createdAt: Date.now(), reason, data };
+    await atomicWrite([Stores.RECOVERY, Stores.META], stores => {
+      stores[Stores.RECOVERY].put(point);
+      existing.sort((a, b) => b.createdAt - a.createdAt).slice(2).forEach(item => stores[Stores.RECOVERY].delete(item.id));
+      if (daily) stores[Stores.META].put({ key: 'dailyRecovery', value: day });
+    });
+    return point.id;
+  });
+  recoveryQueue = operation.catch(() => {});
+  return operation;
+}
+
+export async function listRecoveryPoints() {
+  return (await getAll(Stores.RECOVERY)).sort((a, b) => b.createdAt - a.createdAt).map(({ data, ...point }) => ({
+    ...point, transactions: data.transactions.length
+  }));
+}
+
+export async function restoreRecoveryPoint(id) {
+  const point = await get(Stores.RECOVERY, id);
+  if (!point) throw new Error('恢复点已不存在');
+  return importAll(point.data, 'replace');
+}
+
+export async function getBackupStatus() {
+  return (await get(Stores.META, 'lastExport'))?.value || null;
+}
+
+export async function recordBackupExport(count) {
+  await put(Stores.META, { key: 'lastExport', value: { at: Date.now(), count } });
 }
 
 export async function previewBackupImport(data, mode = 'merge') {
+  await verifyBackup(data);
   const normalized = normalizeBackup(data);
-  const existing = await getAll(Stores.TRANSACTIONS);
-  const existingFingerprints = new Set(existing.map(transactionFingerprint));
-  const duplicateCount = normalized.transactions.filter(transaction => existingFingerprints.has(transactionFingerprint(transaction))).length;
+  const snapshot = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS, Stores.CATEGORIES]);
+  const existing = mode === 'merge' ? snapshot.transactions : [];
+  const accountPlan = buildEntityPlan(normalized.accounts, mode === 'merge' ? snapshot.accounts : [], accountSemanticKey, 'acc');
+  const categoryPlan = buildEntityPlan(normalized.categories, mode === 'merge' ? snapshot.categories : [], categorySemanticKey, 'cat');
+  const match = createTransactionMatcher(existing);
+  const outcomes = normalized.transactions.map(transaction => match({
+    ...transaction,
+    accountId: accountPlan.idMap.get(transaction.accountId) || transaction.accountId,
+    toAccountId: accountPlan.idMap.get(transaction.toAccountId) || transaction.toAccountId,
+    categoryId: categoryPlan.idMap.get(transaction.categoryId) || transaction.categoryId
+  }));
+  const duplicateCount = outcomes.filter(value => value === 'duplicate').length;
   return {
     mode,
     transactions: normalized.transactions.length,
@@ -379,19 +477,25 @@ export async function previewBackupImport(data, mode = 'merge') {
     categories: normalized.categories.length,
     budgets: normalized.budgets.length,
     duplicateCount,
+    conflictCount: outcomes.filter(value => value === 'conflict').length + accountPlan.conflicts.length + categoryPlan.conflicts.length,
+    incomeCents: normalized.transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amountCents, 0),
+    expenseCents: normalized.transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amountCents, 0),
+    checked: Boolean(data.checksum),
     version: normalized.version
   };
 }
 
 export async function importAll(data, mode = 'merge') {
+  await verifyBackup(data);
   const normalized = normalizeBackup(data);
   if (!['merge', 'replace'].includes(mode)) throw new Error('导入模式无效');
   const [existingTransactions, existingAccounts, existingCategories, existingBudgets] = await Promise.all([
     getAll(Stores.TRANSACTIONS), getAll(Stores.ACCOUNTS), getAll(Stores.CATEGORIES), getAll(Stores.BUDGETS)
   ]);
 
-  const accountPlan = buildEntityPlan(normalized.accounts, mode === 'merge' ? existingAccounts : [], accountSemanticKey, 'acc');
-  const categoryPlan = buildEntityPlan(normalized.categories, mode === 'merge' ? existingCategories : [], categorySemanticKey, 'cat');
+  const accountPlan = mode === 'replace' ? replacementEntityPlan(normalized.accounts) : buildEntityPlan(normalized.accounts, existingAccounts, accountSemanticKey, 'acc');
+  const categoryPlan = mode === 'replace' ? replacementEntityPlan(normalized.categories) : buildEntityPlan(normalized.categories, existingCategories, categorySemanticKey, 'cat');
+  if (accountPlan.conflicts?.length || categoryPlan.conflicts?.length) throw new Error('账户期初余额、期初日期或分类类型存在冲突，合并已中止；请核对备份与本机账本');
   const validAccountIds = new Set([
     ...(mode === 'merge' ? existingAccounts.map(account => account.id) : []),
     ...accountPlan.toWrite.map(account => account.id),
@@ -411,7 +515,7 @@ export async function importAll(data, mode = 'merge') {
     ...categoryPlan.toWrite
   ].map(category => [category.id, category]));
   const transactions = [];
-  const seen = new Set((mode === 'merge' ? existingTransactions : []).map(transactionFingerprint));
+  const match = createTransactionMatcher(mode === 'merge' ? existingTransactions : []);
   let skippedDuplicates = 0;
   for (const source of normalized.transactions) {
     const transaction = {
@@ -432,19 +536,20 @@ export async function importAll(data, mode = 'merge') {
     } else if (validCategories.get(transaction.categoryId)?.type !== transaction.type) {
       throw new Error('备份中存在分类类型与流水类型不一致的记录');
     }
-    delete transaction.id;
-    const fingerprint = transactionFingerprint(transaction);
-    if (seen.has(fingerprint)) {
+    const outcome = mode === 'merge' ? match(transaction) : 'new';
+    if (outcome === 'conflict') throw new Error('同一笔流水在本机与备份中内容不同，合并已中止。请核对后选择完整恢复');
+    if (outcome === 'duplicate') {
       skippedDuplicates++;
       continue;
     }
-    transaction.sourceFingerprint = fingerprint;
-    seen.add(fingerprint);
+    if (mode === 'merge') delete transaction.id;
+    transaction.uid ||= createId('tx');
     transactions.push(transaction);
   }
 
   const budgets = mergeBudgets(normalized.budgets, mode === 'merge' ? existingBudgets : []);
   const storeNames = [Stores.TRANSACTIONS, Stores.BUDGETS, Stores.CATEGORIES, Stores.ACCOUNTS];
+  await createRecoveryPoint(mode === 'replace' ? '完整恢复前' : '合并备份前');
   await atomicWrite(storeNames, stores => {
     if (mode === 'replace') storeNames.forEach(name => stores[name].clear());
     accountPlan.toWrite.forEach(record => stores[Stores.ACCOUNTS].put(record));
@@ -505,6 +610,9 @@ export async function importExternalRows(rows, { openingBalances = new Map() } =
   };
   const alignOpeningDate = (account, date) => {
     if (!account.openingDate || date >= account.openingDate) return account;
+    if (Number(account.openingBalanceCents || 0) !== 0) {
+      throw new Error(`流水早于「${account.name}」的非零期初余额日期，请先核对并调整该账户期初日期`);
+    }
     const updated = { ...account, openingDate: date, updatedAt: Date.now() };
     accountsByName.set(normalizeKey(account.name), updated);
     accountsToWrite.push(updated);
@@ -520,13 +628,17 @@ export async function importExternalRows(rows, { openingBalances = new Map() } =
     }
   }
 
-  const seen = new Set(existingTransactions.map(transactionFingerprint));
+  const matchTransaction = createTransactionMatcher(existingTransactions);
   const transactions = [];
   let skipped = 0;
   for (const row of rows) {
     try {
-      const type = TRANSACTION_TYPES.has(row.type) ? row.type : 'expense';
-      let account = ensureAccount(row.rawFrom || (type === 'income' ? row.rawTo : '')) || existingAccounts[0];
+      const type = row.type;
+      if (!TRANSACTION_TYPES.has(type)) throw new Error('流水类型无效');
+      const amountCents = row.amountCents != null ? assertCents(row.amountCents, { positive: true }) : toCents(row.amount, { allowNegative: false });
+      assertCents(amountCents, { positive: true });
+      assertDateOnly(row.date);
+      let account = ensureAccount(row.rawFrom || (type === 'income' ? row.rawTo : ''));
       let target = type === 'transfer' ? ensureAccount(row.rawTo) : null;
       if (account) account = alignOpeningDate(account, row.date);
       if (target) target = alignOpeningDate(target, row.date);
@@ -534,7 +646,7 @@ export async function importExternalRows(rows, { openingBalances = new Map() } =
       if (!account || (type === 'transfer' && (!target || target.id === account.id)) || (type !== 'transfer' && !category)) throw new Error('账户或分类缺失');
       const record = {
         type,
-        amountCents: row.amountCents != null ? assertCents(row.amountCents, { positive: true }) : toCents(row.amount, { allowNegative: false }),
+        amountCents,
         categoryId: category?.id || null,
         accountId: account.id,
         toAccountId: target?.id || null,
@@ -543,16 +655,16 @@ export async function importExternalRows(rows, { openingBalances = new Map() } =
         createdAt: timestampForDateAndTime(row.date, row.time || '12:00'),
         updatedAt: Date.now()
       };
-      const fingerprint = transactionFingerprint(record);
-      if (seen.has(fingerprint)) { skipped++; continue; }
-      record.sourceFingerprint = fingerprint;
-      seen.add(fingerprint);
+      if (matchTransaction(record) === 'duplicate') { skipped++; continue; }
+      record.uid = createId('tx');
+      record.sourceFingerprint = transactionFingerprint(record);
       transactions.push(record);
-    } catch {
-      skipped++;
+    } catch (error) {
+      throw new Error(`第 ${transactions.length + skipped + 1} 条流水：${error.message}，未写入任何数据`);
     }
   }
   if (transactions.length === 0) throw new Error('没有可导入的新流水；可能全部重复或格式无效');
+  await createRecoveryPoint('表格导入前');
   await atomicWrite([Stores.TRANSACTIONS, Stores.CATEGORIES, Stores.ACCOUNTS], stores => {
     accountsToWrite.forEach(record => stores[Stores.ACCOUNTS].put(record));
     categoriesToWrite.forEach(record => stores[Stores.CATEGORIES].put(record));
@@ -562,12 +674,13 @@ export async function importExternalRows(rows, { openingBalances = new Map() } =
 }
 
 export async function clearAllData() {
+  await createRecoveryPoint('清空账本前');
   const names = [Stores.TRANSACTIONS, Stores.BUDGETS, Stores.CATEGORIES, Stores.ACCOUNTS];
   return atomicWrite(names, stores => names.forEach(name => stores[name].clear()));
 }
 
 export function transactionFingerprint(transaction) {
-  return [
+  return JSON.stringify([
     transaction.type,
     transaction.date,
     Number(transaction.amountCents || 0),
@@ -575,13 +688,39 @@ export function transactionFingerprint(transaction) {
     transaction.toAccountId || '',
     transaction.categoryId || '',
     String(transaction.note || '').trim()
-  ].join('|');
+  ]);
+}
+
+function createTransactionMatcher(existing) {
+  const byUid = new Map(existing.filter(t => t.uid).map(t => [t.uid, t]));
+  const legacyCounts = new Map();
+  const legacyKey = t => JSON.stringify([transactionFingerprint(t), Number(t.createdAt || 0)]);
+  for (const t of existing) {
+    const key = legacyKey(t);
+    legacyCounts.set(key, (legacyCounts.get(key) || 0) + 1);
+  }
+  return transaction => {
+    if (transaction.uid) {
+      const match = byUid.get(transaction.uid);
+      return !match ? 'new' : transactionFingerprint(match) === transactionFingerprint(transaction) ? 'duplicate' : 'conflict';
+    }
+    const key = legacyKey(transaction);
+    const count = legacyCounts.get(key) || 0;
+    if (!count) return 'new';
+    legacyCounts.set(key, count - 1);
+    return 'duplicate';
+  };
+}
+
+function replacementEntityPlan(records) {
+  return { toWrite: records, idMap: new Map(records.map(r => [r.id, r.id])), added: records.length };
 }
 
 function normalizeBackup(data) {
   if (!data || typeof data !== 'object') throw new Error('备份格式错误');
   if (!Array.isArray(data.transactions)) throw new Error('备份缺少 transactions 数组');
   const version = Number(data.version || 1);
+  if (version >= 3 && !['accounts', 'categories', 'budgets'].every(key => Array.isArray(data[key]))) throw new Error('备份内容不完整，缺少账户、分类或预算数组');
   const accounts = (Array.isArray(data.accounts) ? data.accounts : []).map((account, index) => ({
     id: String(account.id || createId('acc')),
     name: String(account.name || `账户${index + 1}`).trim().slice(0, 20),
@@ -591,8 +730,8 @@ function normalizeBackup(data) {
     sort: Number(account.sort || index + 1),
     builtin: false,
     archived: Boolean(account.archived),
-    openingBalanceCents: Number.isSafeInteger(account.openingBalanceCents) ? account.openingBalanceCents : toCents(account.openingBalance || 0),
-    openingDate: safeDate(account.openingDate, null),
+    openingBalanceCents: account.openingBalanceCents != null ? assertCents(account.openingBalanceCents) : toCents(account.openingBalance || 0),
+    openingDate: account.openingDate ? assertDateOnly(account.openingDate) : null,
     createdAt: Number(account.createdAt) || Date.now(),
     updatedAt: Number(account.updatedAt) || Date.now()
   }));
@@ -611,10 +750,11 @@ function normalizeBackup(data) {
   const transactions = data.transactions.map((transaction, index) => {
     const type = String(transaction.type || '');
     if (!TRANSACTION_TYPES.has(type)) throw new Error(`第 ${index + 1} 条流水类型无效`);
-    const amountCents = Number.isSafeInteger(transaction.amountCents) ? transaction.amountCents : toCents(transaction.amount, { allowNegative: false });
+    const amountCents = transaction.amountCents != null ? assertCents(transaction.amountCents) : toCents(transaction.amount, { allowNegative: false });
     assertCents(amountCents, { positive: true });
     return {
       id: transaction.id,
+      uid: typeof transaction.uid === 'string' && transaction.uid ? transaction.uid : undefined,
       type,
       amountCents,
       categoryId: type === 'transfer' ? null : (transaction.categoryId || null),
@@ -622,7 +762,7 @@ function normalizeBackup(data) {
       toAccountId: type === 'transfer' ? (transaction.toAccountId || null) : null,
       note: String(transaction.note || '').trim().slice(0, 200),
       date: assertDateOnly(transaction.date),
-      createdAt: Number(transaction.createdAt) || Date.now(),
+      createdAt: Number(transaction.createdAt) || timestampForDateAndTime(transaction.date, '12:00'),
       updatedAt: Number(transaction.updatedAt) || Date.now()
     };
   });
@@ -639,23 +779,45 @@ function normalizeBackup(data) {
   }
   const budgets = (Array.isArray(data.budgets) ? data.budgets : []).map(budget => ({
     key: monthRange(String(budget.key)).start.slice(0, 7),
-    limitCents: Number.isSafeInteger(budget.limitCents) ? budget.limitCents : toCents(budget.limit || 0, { allowNegative: false }),
+    limitCents: budget.limitCents != null ? assertCents(budget.limitCents) : toCents(budget.limit || 0, { allowNegative: false }),
     createdAt: Number(budget.createdAt) || Date.now(),
     updatedAt: Number(budget.updatedAt) || Date.now()
   }));
+  for (const [label, records, key] of [['账户', accounts, 'id'], ['分类', categories, 'id'], ['流水', transactions, 'id'], ['流水标识', transactions, 'uid'], ['预算', budgets, 'key']]) {
+    const values = records.map(r => r[key]).filter(value => value != null);
+    if (new Set(values).size !== values.length) throw new Error(`备份中的${label}标识重复，无法安全恢复`);
+  }
+  for (const transaction of transactions) {
+    if (transaction.id != null && (!Number.isSafeInteger(transaction.id) || transaction.id <= 0)) delete transaction.id;
+  }
+  for (const budget of budgets) {
+    assertCents(budget.limitCents);
+    if (budget.limitCents < 0) throw new Error('备份预算不能为负数');
+  }
   return { version, accounts, categories, transactions, budgets };
 }
 
 function buildEntityPlan(imported, existing, semanticKey, prefix) {
+  const byId = new Map(existing.map(record => [record.id, record]));
   const bySemantic = new Map(existing.map(record => [semanticKey(record), record]));
   const usedIds = new Set(existing.map(record => record.id));
   const idMap = new Map();
   const toWrite = [];
   let added = 0;
+  const conflicts = [];
   for (const source of imported) {
     const key = semanticKey(source);
-    const match = bySemantic.get(key);
+    const match = byId.get(source.id) || bySemantic.get(key);
     if (match) {
+      if (prefix === 'acc') {
+        if (source.openingBalanceCents !== match.openingBalanceCents ||
+            (source.openingBalanceCents !== 0 && source.openingDate !== match.openingDate)) {
+          conflicts.push(source.id);
+        } else if (source.openingDate < match.openingDate) {
+          match.openingDate = source.openingDate;
+          toWrite.push({ ...match });
+        }
+      } else if (source.type !== match.type) conflicts.push(source.id);
       idMap.set(source.id, match.id);
       continue;
     }
@@ -667,7 +829,7 @@ function buildEntityPlan(imported, existing, semanticKey, prefix) {
     toWrite.push(record);
     added++;
   }
-  return { idMap, toWrite, added };
+  return { idMap, toWrite, added, conflicts };
 }
 
 function mergeBudgets(imported, existing) {

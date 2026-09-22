@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+test('the fractional cents cannot overflow the maximum safe integer', () => {
+  assert.throws(() => toCents('90071992547409.99'), /超出支持范围/);
+  assert.equal(toCents('90071992547409.91'), Number.MAX_SAFE_INTEGER);
+});
 import { toCents, fromCents, assertCents, roundYuan } from '../js/money.js';
 
 test('money is converted to exact integer cents', () => {

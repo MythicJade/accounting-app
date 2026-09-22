@@ -68,6 +68,7 @@ export async function updateCategory(id, patch) {
   const existing = await get(Stores.CATEGORIES, id);
   if (!existing) throw new Error('分类不存在');
   const nextType = patch.type == null ? existing.type : (patch.type === 'income' ? 'income' : 'expense');
+  if (nextType !== existing.type && await getCategoryUsage(id) > 0) throw new Error('分类已关联流水，不能改变收支类型');
   const nextName = patch.name == null ? existing.name : normalizeName(patch.name);
   await assertUniqueName(nextName, nextType, id);
   const next = {
@@ -79,6 +80,8 @@ export async function updateCategory(id, patch) {
     archived: patch.archived == null ? Boolean(existing.archived) : Boolean(patch.archived),
     updatedAt: Date.now()
   };
+  const { createRecoveryPoint } = await import('./store.js');
+  await createRecoveryPoint('每日自动恢复点', { daily: true });
   await put(Stores.CATEGORIES, next);
   return next;
 }

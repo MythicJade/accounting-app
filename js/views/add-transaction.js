@@ -1,7 +1,7 @@
 // js/views/add-transaction.js — v2.3.0 沉浸式记一笔
 // 排版对齐参考设计：下划线类型 Tabs / 深色金额条（分类+金额一体）/ 瓷砖分类网格 /
 // 账户胶囊选择 / 内联元信息行（账本·日期·备注）/ 4 列键盘（+ − 连续运算、再记、完成）
-import { addTransaction, updateTransaction, getTransaction, deleteTransaction, transferMoney } from '../store.js';
+import { addTransaction, updateTransaction, getTransaction, deleteTransaction } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
 import { todayStr } from '../format.js';
@@ -22,7 +22,10 @@ export async function renderAddTransaction(mount, params = {}) {
     }
   }
 
-  const allAccounts = await listAccounts({ includeArchived: Boolean(editing) });
+  const allAccounts = (await listAccounts({ includeArchived: Boolean(editing) }))
+    .filter(account => !account.archived || [editing?.accountId, editing?.toAccountId].includes(account.id));
+  let saving = false;
+  let disposed = false;
 
   // state
   const state = {
@@ -35,7 +38,8 @@ export async function renderAddTransaction(mount, params = {}) {
     toAccountId: editing ? editing.toAccountId : (allAccounts[1] ? allAccounts[1].id : null)
   };
 
-  const allCats = await listCategories(null, { includeArchived: Boolean(editing) });
+  const allCats = (await listCategories(null, { includeArchived: Boolean(editing) }))
+    .filter(category => !category.archived || category.id === editing?.categoryId);
   let cats = allCats.filter(c => c.type === state.type);
   if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
 
@@ -77,6 +81,7 @@ export async function renderAddTransaction(mount, params = {}) {
     }
     amtVal.textContent = state.expr || '0';
     amtVal.className = 'amt-val' + (state.expr ? '' : ' is-empty');
+    amtVal.classList.toggle('is-long', state.expr.length > 10);
     if (animate) {
       void amtVal.offsetWidth;
       amtVal.classList.add('is-updating');
@@ -213,7 +218,17 @@ export async function renderAddTransaction(mount, params = {}) {
         const chip = el('button', {
           class: 'acct-chip' + (selectedId === a.id ? ' active' : ''), type: 'button', role: 'radio',
           'aria-checked': String(selectedId === a.id),
-          onclick: () => { onSelect(a.id); vibrate(6); }
+          onclick: () => {
+            if (saving) return;
+            selectedId = a.id;
+            onSelect(a.id);
+            [...row.children].forEach((button, index) => {
+              const selected = allAccounts[index].id === selectedId;
+              button.classList.toggle('active', selected);
+              button.setAttribute('aria-checked', String(selected));
+            });
+            vibrate(6);
+          }
         }, [document.createTextNode(`${a.icon || '💳'} ${a.name}`)]);
         row.appendChild(chip);
       });
@@ -305,6 +320,7 @@ export async function renderAddTransaction(mount, params = {}) {
   });
 
   function onKey(k) {
+    if (saving) return;
     if (k === '⌫') {
       state.expr = state.expr.slice(0, -1);
     } else if (k === '+' || k === '-') {
@@ -391,6 +407,7 @@ export async function renderAddTransaction(mount, params = {}) {
     applyTypeVisibility();
   }
   function setType(t) {
+    if (saving) return;
     if (state.type === t) return;
     state.type = t;
     refreshType();
@@ -404,6 +421,7 @@ export async function renderAddTransaction(mount, params = {}) {
   refreshMeta();
 
   return () => {
+    disposed = true;
     document.body.classList.remove('route-add');
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
@@ -412,6 +430,7 @@ export async function renderAddTransaction(mount, params = {}) {
 
   // ===== 保存 =====
   async function saveCurrent(continueEditing) {
+    if (saving || disposed) return;
     const amount = evaluateExpr();
     if (isNaN(amount)) {
       toast(state.expr ? '金额格式有误' : '请输入金额');
@@ -422,34 +441,20 @@ export async function renderAddTransaction(mount, params = {}) {
     if (state.type === 'transfer') {
       if (!state.accountId || !state.toAccountId) { toast('请选择源账户和目标账户'); return; }
       if (state.accountId === state.toAccountId) { toast('源账户和目标账户不能相同'); return; }
-      try {
-        if (editId) {
-          await updateTransaction(editId, {
-            type: 'transfer', amount: amountStr,
-            accountId: state.accountId, toAccountId: state.toAccountId,
-            categoryId: null, note: state.note.trim(), date: state.date
-          });
-          toast('已更新');
-        } else {
-          await transferMoney({ fromId: state.accountId, toId: state.toAccountId, amount: amountStr, note: state.note.trim(), date: state.date });
-          toast('已转账');
-        }
-        vibrate(15);
-        if (continueEditing) return;
-        setTimeout(() => { location.hash = '#/'; }, 250);
-      } catch (e) {
-        toast('保存失败：' + (e.message || e));
-      }
-      return;
+    } else if (!state.categoryId) {
+      toast('请选择分类'); return;
     }
-
-    if (!state.categoryId) { toast('请选择分类'); return; }
     if (!state.accountId) { toast('请选择账户'); return; }
     const payload = {
       type: state.type, amount: amountStr,
-      categoryId: state.categoryId, accountId: state.accountId,
+      categoryId: state.type === 'transfer' ? null : state.categoryId, accountId: state.accountId,
+      toAccountId: state.type === 'transfer' ? state.toAccountId : null,
       note: state.note.trim(), date: state.date
     };
+    saving = true;
+    againKey.disabled = doneKey.disabled = true;
+    doneKey.textContent = '保存中';
+    let leaving = false;
     try {
       if (editId) {
         await updateTransaction(editId, payload);
@@ -459,14 +464,24 @@ export async function renderAddTransaction(mount, params = {}) {
         toast(continueEditing ? '已保存，记下一笔' : '已保存');
       }
       vibrate(15);
+      if (disposed) return;
       if (continueEditing && !editId) {
         state.expr = '';
+        state.note = '';
         refreshAmtBar(true);
+        refreshMeta();
         return;
       }
-      setTimeout(() => { location.hash = '#/'; }, 250);
+      leaving = true;
+      location.hash = '#/';
     } catch (e) {
       toast('保存失败：' + (e.message || e));
+    } finally {
+      if (!leaving) {
+        saving = false;
+        againKey.disabled = doneKey.disabled = false;
+        doneKey.textContent = '完成';
+      }
     }
   }
 

@@ -36,6 +36,20 @@ export class Router {
   }
 
   async dispatch() {
+    this.pending = true;
+    if (this.dispatching) return;
+    this.dispatching = true;
+    try {
+      while (this.pending) {
+        this.pending = false;
+        await this.renderCurrent();
+      }
+    } finally {
+      this.dispatching = false;
+    }
+  }
+
+  async renderCurrent() {
     const hash = location.hash.slice(1) || '/';
     let matched = null, params = {};
     for (const r of this.routes) {
@@ -67,11 +81,13 @@ export class Router {
       if (typeof result === 'function') {
         this.currentCleanup = result;
       }
-      this.playEnterAnimation();
-      this.mount.focus({ preventScroll: true });
+      if (!this.pending) {
+        this.playEnterAnimation();
+        this.mount.focus({ preventScroll: true });
+      }
     } catch (e) {
       console.error('Route render error:', e);
-      this.mount.innerHTML = '<div class="empty"><p>加载失败：' + (e.message || e) + '</p></div>';
+      this.mount.replaceChildren(Object.assign(document.createElement('p'), { className: 'empty', textContent: '加载失败：' + (e.message || e) }));
       this.playEnterAnimation();
     }
   }

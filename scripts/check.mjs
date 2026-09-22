@@ -16,7 +16,7 @@ assert.match(workerSource, new RegExp(`accounting-v${escapeRegExp(expected)}`));
 assert.equal(manifest.id, './');
 assert.doesNotMatch(indexSource, /user-scalable\s*=\s*no/i);
 assert.doesNotMatch(indexSource, /navigator\.serviceWorker\.register/);
-assert.doesNotMatch(workerSource, /xlsx\.full\.min\.js/);
+assert.match(workerSource, /xlsx\.full\.min\.js/);
 
 const precache = [...workerSource.matchAll(/'\.\/([^']+)'/g)].map(match => match[1]);
 for (const path of precache) assert.ok(existsSync(resolve(root, path)), `Missing precache file: ${path}`);

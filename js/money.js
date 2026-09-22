@@ -27,6 +27,7 @@ export function toCents(value, { allowNegative = true } = {}) {
   }
   const fraction = Number(fractionPart.padEnd(2, '0'));
   const cents = whole * 100 + fraction;
+  if (!Number.isSafeInteger(cents)) throw new Error('金额超出支持范围');
   return negative ? -cents : cents;
 }
 

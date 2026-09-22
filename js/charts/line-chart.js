@@ -91,7 +91,7 @@ function hexToRgba(hex, alpha) {
 
 function setupCanvas(canvas) {
   const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
   const cssW = canvas.clientWidth || 320;
   const cssH = canvas.clientHeight || 220;
   canvas.width = cssW * dpr;

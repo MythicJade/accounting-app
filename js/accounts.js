@@ -67,6 +67,8 @@ export async function updateAccount(id, patch) {
     next.openingDate = openingDate;
   }
   next.updatedAt = Date.now();
+  const { createRecoveryPoint } = await import('./store.js');
+  await createRecoveryPoint('每日自动恢复点', { daily: true });
   await put(Stores.ACCOUNTS, next);
   return hydrateAccount(next);
 }
@@ -91,6 +93,8 @@ export async function deleteAccount(id) {
   if (!account) return;
   const usage = await getAccountUsage(id);
   if (usage > 0) throw new Error(`该账户关联 ${usage} 笔流水，请改为归档`);
+  const { createRecoveryPoint } = await import('./store.js');
+  await createRecoveryPoint('删除账户前');
   await deleteRecord(Stores.ACCOUNTS, id);
 }
 

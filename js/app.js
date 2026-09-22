@@ -50,7 +50,7 @@ async function main() {
         el('h2', { text: '应用启动失败' }),
         el('p', { class: 'text-sm text-2', text: e?.message || '未知错误' }),
         reload,
-        el('p', { class: 'text-xs text-3', text: '如反复出现，请清除浏览器缓存后重试' })
+        el('p', { class: 'text-xs text-3', text: '请先关闭其他记账窗口后重试；不要清除站点数据或卸载，以免丢失本地账目。' })
       ]));
     }
     toast('应用启动失败: ' + (e.message || e), 'error', 4000);

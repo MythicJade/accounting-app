@@ -2,6 +2,7 @@
 import { showModal, toast } from './ui.js';
 
 let updatePromptOpen = false;
+let updateRequested = false;
 
 export function registerPWA() {
   if (globalThis.NativeApp?.isNative) return;
@@ -9,7 +10,7 @@ export function registerPWA() {
 
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
+    if (reloading || !updateRequested) return;
     reloading = true;
     location.reload();
   });
@@ -40,12 +41,20 @@ async function offerUpdate(worker) {
   updatePromptOpen = true;
   const updateNow = await showModal({
     title: '发现新版本',
-    body: '新版本已下载完成。刷新后生效，账目数据不会受影响。',
+    body: '新版本已下载完成，已保存的账目不会受影响。编辑页面需先保存或退出，再更新。',
     actions: [
       { label: '稍后', type: 'ghost', value: false },
       { label: '立即更新', type: 'primary', value: true }
     ]
   });
   updatePromptOpen = false;
-  if (updateNow) worker.postMessage({ type: 'SKIP_WAITING' });
+  if (updateNow) {
+    if (/^#\/(add|edit|categories\/(new|edit))/.test(location.hash)) {
+      toast('请先保存或退出编辑页面，再刷新检查更新', 'info', 3500);
+      return;
+    }
+    updateRequested = true;
+    if (worker.state === 'activated') location.reload();
+    else worker.postMessage({ type: 'SKIP_WAITING' });
+  }
 }

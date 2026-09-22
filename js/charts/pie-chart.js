@@ -30,7 +30,7 @@ export function drawPieChart(canvas, data, options = {}) {
   canvas._pieAnimating = false;
 
   const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
   const cssW = canvas.clientWidth || 220;
   const cssH = canvas.clientHeight || 240;
   canvas.width = cssW * dpr;
@@ -56,7 +56,12 @@ export function drawPieChart(canvas, data, options = {}) {
       const geom = canvas._pieGeom;
       const onSelect = canvas._pieOnSelect;
       const sl = canvas._pieSlices || [];
-      if (!geom || !onSelect || canvas._pieAnimating) return;
+      if (!geom || !onSelect) return;
+      if (canvas._pieAnimating) {
+        cancelAnimationFrame(canvas._pieAnimationFrame);
+        canvas._pieAnimating = false;
+        canvas._pieFinish?.();
+      }
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left - geom.cx;
       const y = e.clientY - rect.top - geom.cy;
@@ -118,7 +123,7 @@ export function drawPieChart(canvas, data, options = {}) {
       endAngle: slice.endAngle + rotation,
       midAngle: slice.midAngle + rotation
     }));
-    canvas._pieSlices = rotated;
+    canvas._pieSlices = slices;
 
     rotated.forEach(s => {
       const isSelected = options.selected === s.index;
@@ -137,7 +142,7 @@ export function drawPieChart(canvas, data, options = {}) {
     });
 
     const topN = options.topLabels != null ? options.topLabels : 3;
-    [...rotated].sort((a, b) => b.value - a.value).slice(0, topN).forEach(s => {
+    [...slices].sort((a, b) => b.value - a.value).slice(0, topN).forEach(s => {
       drawLeaderLabel(ctx, cx, cy, radius, s, options.selected === s.index, C);
     });
 
@@ -170,6 +175,7 @@ export function drawPieChart(canvas, data, options = {}) {
     }
   }
 
+  canvas._pieFinish = () => paint(0);
   const signature = JSON.stringify([
     cssW, cssH,
     data.map(d => [d.label, d.value, d.color || C.primary])
@@ -183,6 +189,7 @@ export function drawPieChart(canvas, data, options = {}) {
     const startedAt = performance.now();
     canvas._pieAnimating = true;
     const frame = now => {
+      if (!canvas.isConnected) { canvas._pieAnimating = false; return; }
       const progress = Math.min(1, (now - startedAt) / duration);
       const eased = 1 - Math.pow(1 - progress, 3);
       paint(-Math.PI * 2 * (1 - eased));
@@ -229,10 +236,12 @@ function drawLeaderLabel(ctx, cx, cy, radius, slice, isSelected, C) {
   ctx.fill();
 
   // label
-  const labelText = slice.label || '';
+  let labelText = slice.label || '';
   const moneyText = formatMoneyShort(slice.value);
   const fontSize = isSelected ? 12 : 11;
   ctx.font = isSelected ? 'bold ' + fontSize + 'px sans-serif' : fontSize + 'px sans-serif';
+  const maxLabelWidth = Math.max(20, isRight ? canvasWidth(ctx) - x3 - 4 : x3 - 4);
+  while (labelText.length > 2 && ctx.measureText(labelText).width > maxLabelWidth) labelText = labelText.slice(0, -2) + '…';
   ctx.textBaseline = 'middle';
   if (isRight) {
     ctx.textAlign = 'left';
@@ -251,6 +260,8 @@ function drawLeaderLabel(ctx, cx, cy, radius, slice, isSelected, C) {
     ctx.fillText(moneyText, x3 - 2, y2 + 6);
   }
 }
+
+function canvasWidth(ctx) { return ctx.canvas.clientWidth || 220; }
 
 function formatMoneyShort(n) {
   if (n >= 10000) return '¥' + (n / 10000).toFixed(1) + '万';

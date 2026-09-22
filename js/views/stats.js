@@ -1,5 +1,5 @@
 // js/views/stats.js — statistics page with charts
-import { categoryBreakdown, dailyTotals, sumByType } from '../store.js';
+import { listTransactions } from '../store.js';
 import { listCategories } from '../categories.js';
 import { listAccounts } from '../accounts.js';
 import { getRange, shiftRange, rangeLabel, listDates, formatMoney, formatDateStr, monthKeyToLabel, getCustomRange, todayStr } from '../format.js';
@@ -43,6 +43,9 @@ function ensureRange() {
 }
 
 export async function renderStats(mount) {
+  let renderRevision = 0;
+  let disposed = false;
+  let lastPieData = [];
   ensureRange();
 
   // Account filter chips
@@ -241,6 +244,7 @@ export async function renderStats(mount) {
 
   // Render function (re-renders in place)
   async function render() {
+    const revision = ++renderRevision;
     rangeLabelEl.textContent = rangeLabel(_state.range, _state.period);
 
     // Show/hide range nav vs custom panel
@@ -267,14 +271,28 @@ export async function renderStats(mount) {
     const range = _state.range;
     const accId = _state.accountId || undefined;
     // summary
-    const sums = await sumByType(range.start, range.end, accId);
+    const type = _state.view;
+    const [transactions, allCats] = await Promise.all([
+      listTransactions({ dateFrom: range.start, dateTo: range.end, accountId: accId }),
+      listCategories(null, { includeArchived: true })
+    ]);
+    if (disposed || revision !== renderRevision) return;
+    let incomeCents = 0, expenseCents = 0;
+    const categoryCents = new Map(), dailyCents = new Map();
+    for (const transaction of transactions) {
+      if (transaction.type === 'income') incomeCents += transaction.amountCents;
+      else if (transaction.type === 'expense') expenseCents += transaction.amountCents;
+      if (transaction.type !== type) continue;
+      categoryCents.set(transaction.categoryId, (categoryCents.get(transaction.categoryId) || 0) + transaction.amountCents);
+      dailyCents.set(transaction.date, (dailyCents.get(transaction.date) || 0) + transaction.amountCents);
+    }
+    const sums = { income: incomeCents / 100, expense: expenseCents / 100 };
     summaryIncome.lastChild.textContent = formatMoney(sums.income);
     summaryExpense.lastChild.textContent = formatMoney(sums.expense);
     summaryBalance.lastChild.textContent = formatMoney(sums.income - sums.expense);
 
     // pie data
-    const catMap = await categoryBreakdown(range.start, range.end, _state.view, accId);
-    const allCats = await listCategories(null, { includeArchived: true });
+    const catMap = new Map([...categoryCents].map(([key, cents]) => [key, cents / 100]));
     const catById = new Map(allCats.map(c => [c.id, c]));
     let pieData = [];
     catMap.forEach((val, id) => {
@@ -294,18 +312,12 @@ export async function renderStats(mount) {
       _state.selectedSlice = null;
     }
 
-    drawPieChart(pieCanvas, pieData, {
-      selected: _state.selectedSlice,
-      topLabels: 3,
-      onSelect: (idx) => {
-        _state.selectedSlice = (_state.selectedSlice === idx) ? null : idx;
-        render();
-      }
-    });
+    lastPieData = pieData;
+    redrawPie();
 
     // line data — build label/fullLabel for tooltip
     const dates = listDates(range.start, range.end);
-    const dailyMap = await dailyTotals(range.start, range.end, _state.view, accId);
+    const dailyMap = new Map([...dailyCents].map(([key, cents]) => [key, cents / 100]));
     let lineData;
     const totalDays = dates.length;
     if (totalDays > 90) {
@@ -376,4 +388,25 @@ export async function renderStats(mount) {
   }
 
   await render();
+  function redrawPie() {
+    drawPieChart(pieCanvas, lastPieData, {
+      selected: _state.selectedSlice, topLabels: 3,
+      onSelect: index => {
+        _state.selectedSlice = _state.selectedSlice === index ? null : index;
+        redrawPie();
+      }
+    });
+  }
+  let resizeFrame = 0;
+  const observer = new ResizeObserver(() => {
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => { if (!disposed) { redrawPie(); redrawLineChart(); } });
+  });
+  observer.observe(pieCard);
+  return () => {
+    disposed = true;
+    observer.disconnect();
+    cancelAnimationFrame(resizeFrame);
+    cancelAnimationFrame(pieCanvas._pieAnimationFrame);
+  };
 }

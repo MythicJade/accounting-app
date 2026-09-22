@@ -1,10 +1,11 @@
-/* My Accounting PWA v2.4.1 application shell. */
-const CACHE_NAME = 'accounting-v2.4.1';
+/* My Accounting PWA v2.5.0 application shell. */
+const CACHE_NAME = 'accounting-v2.5.0';
 const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.json',
   './css/style.css',
+  './css/refinements.css',
   './js/app.js',
   './js/pwa.js',
   './js/theme.js',
@@ -14,6 +15,7 @@ const PRECACHE_URLS = [
   './js/category-icons.js',
   './js/accounts.js',
   './js/excel-io.js',
+  './js/lib/xlsx.full.min.js',
   './js/native-bridge.js',
   './js/backup-crypto.js',
   './js/date-only.js',
@@ -42,16 +44,14 @@ const PRECACHE_URLS = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(PRECACHE_URLS))
-      // v2.3.1: 预缓存完成即自动接管，无需用户确认，避免设备滞留旧版本
-      .then(() => self.skipWaiting())
+      .then(cache => cache.addAll(PRECACHE_URLS.map(url => new Request(url, { cache: 'reload' }))))
   );
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key.startsWith('accounting-v') && key !== CACHE_NAME).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -66,30 +66,19 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(networkFirstNavigation(event.request));
+    event.respondWith(caches.open(CACHE_NAME).then(async cache => (await cache.match('./index.html')) || fetch(event.request)));
     return;
   }
-  event.respondWith(staleWhileRevalidate(event.request));
+  event.respondWith(cacheFirst(event.request));
 });
 
-async function networkFirstNavigation(request) {
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    return (await cache.match(request)) || (await cache.match('./index.html')) || Response.error();
-  }
-}
-
-async function staleWhileRevalidate(request) {
+async function cacheFirst(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
+  if (cached) return cached;
   const network = fetch(request).then(async response => {
     if (response.ok && response.type === 'basic') await cache.put(request, response.clone());
     return response;
   }).catch(() => null);
-  if (cached) return cached;
   return (await network) || new Response('', { status: 504, statusText: 'Offline' });
 }

@@ -1,0 +1,113 @@
+/* V2.5: shared density, surfaces and restrained, interruptible motion. */
+:root {
+  --motion-fast: 150ms;
+  --motion-page: 240ms;
+  --motion-ease: cubic-bezier(.2,.8,.2,1);
+}
+.view { padding-top: calc(12px + var(--safe-top)); }
+.topbar { margin-bottom: 12px; }
+.topbar h1, .category-editor-head h1 { font-size: 20px; font-weight: 650; }
+.topbar .back { width: 40px; height: 40px; box-shadow: none; }
+.card { box-shadow: var(--shadow-sm); }
+.text-3, .text-xs, .text-sm { overflow-wrap: anywhere; }
+.section-heading { letter-spacing: .015em; }
+.tabbar { background: var(--card); border-top: 1px solid var(--border); }
+.tabbar .tab { color: var(--text-2); }
+.tabbar .tab.active { color: var(--tab-active); }
+.tabbar .tab svg { transition: transform var(--motion-page) var(--motion-ease); }
+.tabbar .tab.active svg { transform: translateY(-2px); }
+.btn { color: var(--on-primary); }
+.btn-ghost { color: var(--c-primary-dark); }
+.btn-danger { color: #fff; }
+.input::placeholder, input::placeholder { color: var(--text-2); opacity: .65; }
+.tx-item { content-visibility: auto; contain-intrinsic-size: auto 68px; }
+.tx-item .name, .tx-note { overflow: hidden; text-overflow: ellipsis; }
+.tx-item .amount, .na-value, .summary-amount { font-variant-numeric: tabular-nums; }
+.tx-date-totals, .tx-note { color: var(--text-2); }
+.tx-date-totals { font-size: 12px; }
+.tx-date-label { font-size: 13px; }
+.cat-rank-item .bar-fill, .goal-bar i, .progress-fill {
+  transition: width 420ms var(--motion-ease);
+}
+
+/* Logical viewport, not the panel's physical pixel resolution. Small screens
+   and enlarged system fonts may scroll rather than clipping any control. */
+body.route-add .view { min-height: 100dvh; height: 100dvh; overflow-y: auto; }
+.add-layout2 { flex: 1 0 auto; min-height: 100%; width: 100%; }
+.add-top-row { flex-shrink: 0; }
+.amt-bar { flex-shrink: 0; padding: 16px; gap: 10px; }
+.amt-val { min-width: 0; max-width: 64%; overflow-wrap: anywhere; line-height: 1.25; text-align: right; font-size: 30px; }
+.amt-val.is-long { font-size: 20px; }
+.amt-name { font-size: 14px; }
+.add-main2 { min-height: min-content; gap: 12px; padding-top: 12px; }
+.cat-section { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 8px 0; }
+.tile-page { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 4px; }
+.cat-tile { min-width: 0; }
+.cat-tile .t-label { font-size: 12px; max-width: 100%; line-height: 1.4; }
+.cat-tile .cube { width: 50px; height: 50px; border-radius: 15px; }
+.acct-chip { background: var(--card); color: var(--text-2); min-height: 38px; font-size: 13px; }
+.acct-chip.active { background: var(--c-primary); color: var(--on-primary); border-color: var(--c-primary); }
+.meta-row { flex-shrink: 0; padding: 8px 0; }
+.meta-btn { min-height: 38px; font-size: 13px; }
+.kb4 { flex-shrink: 0; gap: 7px; padding-top: 8px; }
+.kb-key { height: clamp(46px, 7.5dvh, 80px); font-size: 23px; box-shadow: none; border-radius: 14px; }
+.kb-key.fn { font-size: 14px; }
+.kb-key.kb-done { font-size: 17px; box-shadow: none; }
+.add-back { background: var(--card); }
+.category-editor-name { font-size: 17px; }
+.category-editor-count { color: var(--text-2); }
+.category-editor-preview { flex-shrink: 0; }
+.category-editor-actions { border-top: 1px solid var(--border); box-shadow: none; }
+.category-editor-group { font-size: 17px; }
+.category-editor-swatch, .category-editor-icon { transition: transform 150ms ease, background-color 180ms ease; }
+.profile-name { font-size: 20px; }
+.profile-streak { font-size: 12px; color: var(--text-2); }
+.theme-grid { gap: 8px; }
+.quick-tile .lbl { font-size: 12px; }
+.backup-card .card-title { margin-bottom: 8px; color: var(--text); }
+.backup-status { font-size: 13px; line-height: 1.65; margin-bottom: 4px; color: var(--income-deep); }
+.backup-status.needs-backup { color: var(--warning-deep); }
+.backup-actions { display: flex; gap: 10px; margin-top: 12px; }
+.backup-actions .btn { flex: 1; padding: 10px 8px; font-size: 13px; }
+.backup-hint { color: var(--text-2); line-height: 1.65; font-size: 12px; margin-top: 12px; }
+.recovery-list { display: grid; gap: 8px; }
+.recovery-item { display: flex; gap: 10px; align-items: center; border: 1px solid var(--border); padding: 12px; border-radius: 14px; cursor: pointer; }
+.recovery-item:has(input:checked) { border-color: var(--c-primary); background: var(--c-primary-light); }
+.recovery-item strong { font-size: 14px; font-weight: 600; }
+.recovery-item small { display: block; margin-top: 4px; font-size: 12px; color: var(--text-2); }
+.recovery-item input { accent-color: var(--c-primary); }
+.modal { max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); overflow-y: auto; }
+.modal-actions { flex-wrap: wrap; }
+
+/* Animate a surface once, instead of stacking multiple full-screen transforms.
+   This also keeps the floating action button anchored during navigation. */
+.view.route-enter { animation: page-reveal var(--motion-page) var(--motion-ease); }
+@keyframes page-reveal { from { opacity: .45; } to { opacity: 1; } }
+.view.route-enter > .card, .view.route-enter .gauge-card,
+.view.route-enter .add-top-row, .view.route-enter .add-main2,
+.view.route-enter .meta-row, .view.route-enter .kb4,
+.view.route-enter .profile-head, .view.route-enter .home-topbar,
+.view.route-enter > .topbar, .view.route-enter > .accounts-summary-area { animation: none; }
+.view.route-enter .amt-bar { animation: surface-enter var(--motion-page) var(--motion-ease); }
+.modal-mask { backdrop-filter: none; transition: opacity 180ms ease; }
+.modal { animation: surface-enter 220ms var(--motion-ease); }
+.kb-key, .btn, .meta-btn, .quick-tile {
+  transition: transform var(--motion-fast) var(--motion-ease), background-color var(--motion-fast), opacity var(--motion-fast);
+  touch-action: manipulation;
+}
+.quick-tile:active, .meta-btn:active { transform: scale(.97); }
+.tile-track { will-change: auto; }
+@media (max-height: 720px) {
+  .amt-bar { padding: 11px 13px; margin-top: 4px; }
+  .amt-val { font-size: 26px; }
+  .add-main2 { padding-top: 4px; gap: 5px; }
+  .tile-page { gap: 7px 4px; }
+  .cat-tile .cube { width: 44px; height: 44px; border-radius: 13px; }
+  .cat-tile .t-label { font-size: 11px; }
+  .meta-row { padding: 3px 0; }
+  .kb-key { height: 44px; }
+  .kb4 { gap: 5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

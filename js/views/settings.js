@@ -1,5 +1,5 @@
 // js/views/settings.js — settings: export/import/clear + about
-import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions, getAllTransactions, getAssetsSummary, monthlySummary, getBudget } from '../store.js';
+import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions, getAllTransactions, getAssetsSummary, monthlySummary, getBudget, listRecoveryPoints, restoreRecoveryPoint, getBackupStatus, recordBackupExport } from '../store.js';
 import { formatMoney, currentMonthKey } from '../format.js';
 import { exportToExcel, previewExcelImport, importParsedData } from '../excel-io.js';
 import { toast, confirmDialog, showModal, promptDialog, el } from '../ui.js';
@@ -197,7 +197,55 @@ export async function renderSettings(mount) {
     el('div', { class: 'text-sm', text: '默认纯本地运行 · 备份可密码加密' })
   ]);
 
-  mount.append(profileHead, appearanceCard, quickCard, naCard, goalCard, switchCard, dangerGroup, helpGroup, about);
+  const backupStatus = el('p', { class: 'backup-status', role: 'status' });
+  const recoverySummary = el('p', { class: 'text-sm text-2' });
+  const backupCard = el('section', { class: 'card backup-card' }, [
+    el('div', { class: 'card-title section-heading', text: '备份与恢复' }),
+    backupStatus, recoverySummary,
+    el('div', { class: 'backup-actions' }, [
+      el('button', { class: 'btn', type: 'button', text: '导出备份', onclick: onExport }),
+      el('button', { class: 'btn btn-ghost', type: 'button', text: '本机恢复点', onclick: onRecovery })
+    ]),
+    el('p', { class: 'backup-hint', text: '每天首次改动及恢复、删除前自动留档，保留最近 3 个恢复点。恢复点仍在本机，不能防止卸载或清除数据；请定期导出到手机文件或其他安全位置。' })
+  ]);
+  await refreshBackupStatus();
+  mount.append(profileHead, backupCard, quickCard, appearanceCard, naCard, goalCard, switchCard, dangerGroup, helpGroup, about);
+
+  async function refreshBackupStatus() {
+    const [last, points] = await Promise.all([getBackupStatus(), listRecoveryPoints()]);
+    const stale = !last || Date.now() - last.at > 7 * 86400000;
+    backupStatus.classList.toggle('needs-backup', stale);
+    backupStatus.textContent = last
+      ? `上次导出：${new Date(last.at).toLocaleString('zh-CN', { hour12: false })} · ${last.count} 笔${stale ? '，建议再备份一次' : ''}`
+      : '尚未导出备份，建议先保存一份到手机文件';
+    recoverySummary.textContent = `可用本机恢复点：${points.length} 个`;
+  }
+
+  async function onRecovery() {
+    try {
+      const points = await listRecoveryPoints();
+      if (!points.length) { toast('首次修改账目后会自动创建恢复点'); return; }
+      let selected = points[0].id;
+      const body = el('div', { class: 'recovery-list' }, points.map((point, index) =>
+        el('label', { class: 'recovery-item' }, [
+          el('input', { type: 'radio', name: 'recovery-point', checked: index === 0, value: point.id, onchange: () => { selected = point.id; } }),
+          el('span', {}, [
+            el('strong', { text: point.reason }),
+            el('small', { text: `${new Date(point.createdAt).toLocaleString('zh-CN', { hour12: false })} · ${point.transactions} 笔` })
+          ])
+        ])
+      ));
+      const chosen = await showModal({ title: '本机恢复点', body, actions: [
+        { label: '取消', type: 'ghost', value: false },
+        { label: '恢复所选', value: true }
+      ] });
+      if (!chosen) return;
+      if (!await confirmDialog('将用所选恢复点替换账本。当前账本会先另存为恢复点；失败时不会改动账目。', { okText: '确认恢复', danger: true })) return;
+      await restoreRecoveryPoint(selected);
+      toast('已恢复，原账本也已留档');
+      router.dispatch();
+    } catch (error) { toast('恢复失败：' + error.message); }
+  }
 
   // Hidden file input for import
   const fileInput = document.createElement('input');
@@ -208,6 +256,7 @@ export async function renderSettings(mount) {
     const file = e.target.files[0];
     if (!file) return;
     try {
+      if (file.size > 50 * 1024 * 1024) throw new Error('备份超过 50 MB，请在电脑端核对后再导入');
       const text = await file.text();
       let data = JSON.parse(text);
       if (isEncryptedBackup(data)) {
@@ -218,15 +267,17 @@ export async function renderSettings(mount) {
       const preview = await previewBackupImport(data, 'merge');
       const body = el('div', { style: 'font-size:14px;line-height:1.8;' }, [
         el('p', { text: `流水 ${preview.transactions} 条 · 账户 ${preview.accounts} 个 · 分类 ${preview.categories} 个` }),
-        el('p', { class: 'text-2', text: `检测到可能重复 ${preview.duplicateCount} 条；安全合并会自动跳过。` }),
-        el('p', { class: 'text-sm text-3', text: '完全替换会先清空当前数据，并在同一事务中恢复；失败会自动回滚。' })
+        el('p', { class: 'text-2', text: `收入 ${formatMoney(preview.incomeCents / 100)} · 支出 ${formatMoney(preview.expenseCents / 100)}（不含转账）` }),
+        el('p', { class: 'text-2', text: preview.checked ? '文件完整性校验通过' : '旧版备份不含校验码，请核对笔数和金额' }),
+        el('p', { class: 'text-2', text: `合并预计跳过 ${preview.duplicateCount} 条；冲突 ${preview.conflictCount} 条。完整恢复保留全部原始流水。` }),
+        el('p', { class: 'text-sm text-3', text: '合并保留本机账户设置。恢复前自动留档，全部写入成功才生效；发生冲突会中止合并，请勿盲目替换。' })
       ]);
       const mode = await showModal({
         title: '备份导入预检',
         body,
         actions: [
           { label: '取消', type: 'ghost', value: null },
-          { label: '安全合并', type: 'primary', value: 'merge' },
+          ...(preview.conflictCount ? [] : [{ label: '安全合并', type: 'primary', value: 'merge' }]),
           { label: '完全替换', type: 'danger', value: 'replace' }
         ]
       });
@@ -305,7 +356,7 @@ export async function renderSettings(mount) {
     if (preview.detectedAccounts.length > 0) {
       form.appendChild(el('div', { style: 'margin:14px 0 6px;font-weight:600;' }, [el('span', { text: '💳 检测到的账户' })]));
       form.appendChild(el('div', { style: 'color:var(--text-3);font-size:12px;margin-bottom:6px;' }, [
-          el('span', { text: '可输入首笔导入流水发生前的账户余额。已存在账户保留原值；导入更早流水时会自动前移期初日期。' })
+          el('span', { text: '新账户填写首笔流水前的余额，不是今天的余额。已有账户默认保留原值；若导入日期早于非零期初余额日期，请先核对并调整账户期初日期。' })
       ]));
       preview.detectedAccounts.forEach((acc) => {
         const cur = acc.currentOpening != null ? Number(acc.currentOpening) : 0;
@@ -406,7 +457,7 @@ export async function renderSettings(mount) {
         <li>列名会模糊匹配（如"记账时间（可不填）"会匹配"记账时间"）</li>
         <li>账户不存在会自动创建（自定义类型）</li>
         <li>分类不存在会自动创建（按支出/收入类型，默认图标颜色可后续修改）</li>
-        <li>导入前可预览账户与分类，并输入各账户当前余额作为初始余额</li>
+        <li>导入前可预览账户与分类；期初余额应为首笔导入流水发生前的余额，不是今天的余额</li>
         <li>日期格式支持多种：YYYY-MM-DD / YYYY/MM/DD / Excel 序列号</li>
       </ul>
       <p style="margin-top:12px;color:var(--text-3);font-size:12px;">提示：导入前建议先"导出 Excel"备份当前数据。</p>
@@ -438,9 +489,11 @@ export async function renderSettings(mount) {
         suffix = '-encrypted';
       }
       const d = new Date();
-      const ts = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+      const ts = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join('');
       await downloadJson(payload, 'accounting-backup-' + ts + suffix + '.json');
-      toast('已导出 ' + data.transactions.length + ' 条记录');
+      await recordBackupExport(data.transactions.length);
+      await refreshBackupStatus();
+      toast('已发起导出 ' + data.transactions.length + ' 笔，请确认文件已保存', 'info', 3500);
     } catch (e) {
       console.error(e);
       toast('导出失败：' + (e.message || e));
@@ -466,7 +519,7 @@ export async function renderSettings(mount) {
   }
 
   async function onClear() {
-    const ok1 = await confirmDialog('此操作将清空所有记账数据，且无法恢复！', { danger: true, okText: '继续' });
+    const ok1 = await confirmDialog('将清空流水、账户、分类和预算。操作前会保留本机恢复点，仍建议先导出文件备份。', { danger: true, okText: '继续' });
     if (!ok1) return;
     const ok2 = await confirmDialog('再次确认清空？所有流水和预算将被删除。', { danger: true, okText: '确认清空' });
     if (!ok2) return;

@@ -1,9 +1,11 @@
 // js/ui.js — shared UI helpers (toast, modal, confirm)
 let toastTimer = null;
+let toastHideTimer = null;
 
 export function toast(msg, type = 'info', duration = 2000) {
   const el = document.getElementById('toast');
   if (!el) { alert(msg); return; }
+  clearTimeout(toastHideTimer);
   el.textContent = msg;
   el.hidden = false;
   // force reflow
@@ -12,14 +14,16 @@ export function toast(msg, type = 'info', duration = 2000) {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     el.classList.remove('show');
-    setTimeout(() => { el.hidden = true; }, 250);
+    toastHideTimer = setTimeout(() => { el.hidden = true; }, 250);
   }, duration);
 }
 
-export function showModal({ title, body, actions }) {
+export function showModal({ title, body, actions, autofocus = false }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
     const previousFocus = document.activeElement;
+    let closing = false;
+    let busy = false;
     const mask = document.createElement('div');
     mask.className = 'modal-mask';
     const modal = document.createElement('div');
@@ -49,13 +53,21 @@ export function showModal({ title, body, actions }) {
       btn.type = 'button';
       btn.className = 'btn ' + (act.type === 'danger' ? 'btn-danger' : act.type === 'ghost' ? 'btn-ghost' : '');
       btn.textContent = act.label;
-      btn.onclick = () => {
+      btn.onclick = async () => {
+        if (busy || closing) return;
+        busy = true;
+        actionsEl.querySelectorAll('button').forEach(button => { button.disabled = true; });
         let result = act.value !== undefined ? act.value : act.label;
-        if (typeof act.onClick === 'function') {
-          const r = act.onClick();
-          if (r === false) return; // keep open
+        try {
+          if (typeof act.onClick === 'function' && await act.onClick() === false) return;
+          busy = false;
+          close(result);
+        } catch (error) {
+          toast(error.message || '操作失败，请重试');
+        } finally {
+          busy = false;
+          actionsEl.querySelectorAll('button').forEach(button => { button.disabled = false; });
         }
-        close(result);
       };
       actionsEl.appendChild(btn);
     });
@@ -66,7 +78,7 @@ export function showModal({ title, body, actions }) {
     root.appendChild(mask);
     requestAnimationFrame(() => {
       const preferred = modal.querySelector('input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])');
-      (preferred || modal).focus();
+      (autofocus && preferred ? preferred : modal).focus({ preventScroll: true });
     });
 
     function onKeyDown(event) {
@@ -94,14 +106,15 @@ export function showModal({ title, body, actions }) {
     }
 
     function close(result) {
-      if (!mask.parentNode) return;
+      if (!mask.parentNode || closing || busy) return;
+      closing = true;
       mask.removeEventListener('keydown', onKeyDown);
       mask.style.opacity = '0';
       setTimeout(() => {
         if (mask.parentNode) mask.parentNode.removeChild(mask);
-        if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+        if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus({ preventScroll: true });
+        resolve(result);
       }, 200);
-      resolve(result);
     }
   });
 }
@@ -141,6 +154,7 @@ export function promptDialog({ title = '输入', label = '', defaultValue = '', 
   return new Promise((resolve) => {
     showModal({
       title,
+      autofocus: true,
       body: bodyEl,
       actions: [
         { label: '取消', type: 'ghost', value: null },

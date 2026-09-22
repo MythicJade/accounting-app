@@ -3,13 +3,14 @@ import { toCents } from './money.js';
 import { timestampToDateOnly, todayDateOnly } from './date-only.js';
 
 const DB_NAME = 'accounting-db';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const STORE_TRANSACTIONS = 'transactions';
 const STORE_BUDGETS = 'budgets';
 const STORE_CATEGORIES = 'categories';
 const STORE_ACCOUNTS = 'accounts';
 const STORE_META = 'meta';
+const STORE_RECOVERY = 'recoveryPoints';
 
 let _dbPromise = null;
 
@@ -42,13 +43,18 @@ export function openDB() {
         store.createIndex('sort', 'sort', { unique: false });
       }
       if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META, { keyPath: 'key' });
+      if (!db.objectStoreNames.contains(STORE_RECOVERY)) db.createObjectStore(STORE_RECOVERY, { keyPath: 'id' });
+      const ledger = transaction.objectStore(STORE_TRANSACTIONS);
+      if (!ledger.indexNames.contains('dateCreated')) ledger.createIndex('dateCreated', ['date', 'createdAt']);
+      if (!ledger.indexNames.contains('uid')) ledger.createIndex('uid', 'uid', { unique: true });
       event.target.transaction.onerror = () => reject(event.target.transaction.error);
     };
     request.onsuccess = async () => {
       const db = request.result;
-      db.onversionchange = () => db.close();
+      db.onversionchange = () => { db.close(); _dbPromise = null; };
       try {
         await migrateToV5(db);
+        await migrateToV6(db);
         resolve(db);
       } catch (error) {
         db.close();
@@ -56,13 +62,24 @@ export function openDB() {
         reject(error);
       }
     };
-    request.onblocked = () => reject(new Error('数据库升级被其他页面阻止，请关闭旧页面后重试'));
+    request.onblocked = () => { _dbPromise = null; reject(new Error('数据库升级被其他页面阻止，请关闭旧页面后重试')); };
     request.onerror = () => {
       _dbPromise = null;
       reject(request.error);
     };
   });
   return _dbPromise;
+}
+
+async function migrateToV6(db) {
+  const meta = await readOneFromDb(db, STORE_META, 'schemaVersion');
+  if (Number(meta?.value || 0) >= 6) return;
+  await migrateCursor(db, STORE_TRANSACTIONS, record => ({
+    ...record,
+    uid: record.uid || crypto.randomUUID(),
+    createdAt: Number(record.createdAt) || Date.now()
+  }));
+  await writeOneToDb(db, STORE_META, { key: 'schemaVersion', value: 6, migratedAt: Date.now() });
 }
 
 async function migrateToV5(db) {
@@ -167,7 +184,7 @@ function objectStore(storeName, mode) {
 }
 
 export function put(storeName, value) {
-  return objectStore(storeName, 'readwrite').then(store => requestPromise(store.put(value)));
+  return committedRequest(storeName, store => store.put(value));
 }
 
 export function get(storeName, key) {
@@ -183,11 +200,55 @@ export function getAllByIndex(storeName, indexName, range = null) {
 }
 
 export function deleteRecord(storeName, key) {
-  return objectStore(storeName, 'readwrite').then(store => requestPromise(store.delete(key)).then(() => undefined));
+  return committedRequest(storeName, store => store.delete(key));
 }
 
 export function clearStore(storeName) {
-  return objectStore(storeName, 'readwrite').then(store => requestPromise(store.clear()).then(() => undefined));
+  return committedRequest(storeName, store => store.clear());
+}
+
+async function committedRequest(storeName, enqueue) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, 'readwrite');
+    const request = enqueue(transaction.objectStore(storeName));
+    transaction.oncomplete = () => resolve(request.result);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('保存未完成，请重试'));
+  });
+}
+
+// One readonly transaction gives backups and reports a consistent ledger snapshot.
+export async function readSnapshot(names) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(names, 'readonly');
+    const result = {};
+    for (const name of names) {
+      const request = transaction.objectStore(name).getAll();
+      request.onsuccess = () => { result[name] = request.result; };
+    }
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('读取账本失败'));
+  });
+}
+
+export async function getRecentTransactions(limit) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_TRANSACTIONS, 'readonly');
+    const request = transaction.objectStore(STORE_TRANSACTIONS).index('dateCreated').openCursor(null, 'prev');
+    const records = [];
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || records.length >= limit) return;
+      records.push(cursor.value);
+      if (records.length < limit) cursor.continue();
+    };
+    transaction.oncomplete = () => resolve(records);
+    transaction.onerror = () => reject(transaction.error);
+  });
 }
 
 export function count(storeName) {
@@ -233,5 +294,6 @@ export const Stores = {
   BUDGETS: STORE_BUDGETS,
   CATEGORIES: STORE_CATEGORIES,
   ACCOUNTS: STORE_ACCOUNTS,
-  META: STORE_META
+  META: STORE_META,
+  RECOVERY: STORE_RECOVERY
 };

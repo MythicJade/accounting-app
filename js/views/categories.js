@@ -4,7 +4,7 @@ import { toast, confirmDialog, el } from '../ui.js';
 import { CATEGORY_ICON_OPTIONS, categoryIconNode, resolveCategoryIconKey, ICON_GROUPS, ICON_META } from '../category-icons.js';
 
 const COLORS = ['#FFC62E','#FFD36B','#FFAE72','#FFA526','#FF7248','#FF94A8','#F36AA8','#C77C86','#A56C8E','#5BC0D0','#26B982','#15A6A1','#93BF38','#6677E8'];
-const MAX_NAME_LENGTH = 4;
+const MAX_NAME_LENGTH = 20;
 
 export async function renderCategories(mount) {
   let currentType = 'expense';
