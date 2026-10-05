@@ -7,17 +7,19 @@ import { listAccounts } from '../accounts.js';
 import { todayStr } from '../format.js';
 import { toast, confirmDialog, vibrate, el, promptDialog } from '../ui.js';
 import { categoryIconNode } from '../category-icons.js';
+import { safeReturnRoute } from '../navigation.js';
 
 const CATS_PER_PAGE = 10; // 5 列 × 2 行瓷砖
 
 export async function renderAddTransaction(mount, params = {}) {
   const editId = params.id ? Number(params.id) : null;
+  const returnRoute = safeReturnRoute(params.query?.get('return'));
   let editing = null;
   if (editId) {
     editing = await getTransaction(editId);
     if (!editing) {
       toast('记录不存在');
-      location.hash = '#/';
+      location.hash = returnRoute;
       return;
     }
   }
@@ -44,7 +46,7 @@ export async function renderAddTransaction(mount, params = {}) {
   if (!state.categoryId && cats[0]) state.categoryId = cats[0].id;
 
   // ===== 顶部：返回 + 下划线类型 Tabs +（删除） =====
-  const backBtn = el('button', { class: 'back add-back', 'aria-label': '返回首页', onclick: () => location.hash = '#/' }, [
+  const backBtn = el('button', { class: 'back add-back', 'aria-label': '返回', onclick: () => location.hash = returnRoute }, [
     el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
   ]);
   const typeBtns = {};
@@ -229,7 +231,7 @@ export async function renderAddTransaction(mount, params = {}) {
             });
             vibrate(6);
           }
-        }, [document.createTextNode(`${a.icon || '💳'} ${a.name}`)]);
+        }, [categoryIconNode(a, { size: 16 }), document.createTextNode(' ' + a.name)]);
         row.appendChild(chip);
       });
     }
@@ -252,7 +254,7 @@ export async function renderAddTransaction(mount, params = {}) {
   }
 
   // ===== 内联元信息行：账本 · 日期 · 备注 =====
-  const metaDateBtn = el('button', { class: 'meta-btn', type: 'button' });
+  const metaDateBtn = el('button', { class: 'meta-btn meta-date-btn', type: 'button' });
   const metaNoteBtn = el('button', { class: 'meta-btn', type: 'button' });
   const hiddenDate = el('input', { type: 'date', value: state.date, style: 'position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;' });
   hiddenDate.addEventListener('change', (e) => { state.date = e.target.value || state.date; refreshMeta(); });
@@ -270,22 +272,22 @@ export async function renderAddTransaction(mount, params = {}) {
     const [y, m, d] = state.date.split('-');
     metaDateBtn.innerHTML = '';
     metaDateBtn.append(
-      el('span', { class: 'mi', 'aria-hidden': 'true', text: '📅' }),
-      document.createTextNode(`${Number(m)}月${Number(d)}日`)
+      el('span', { class: 'mi', 'aria-hidden': 'true' }, [el('svg', { viewBox: '0 0 24 24', width: '17', height: '17', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', html: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/>' })]),
+      document.createTextNode(`${y !== String(new Date().getFullYear()) ? y + '年' : ''}${Number(m)}月${Number(d)}日`)
     );
+    if (state.date > todayStr()) metaDateBtn.appendChild(el('span', { class: 'future-date', text: '未来日期' }));
     metaNoteBtn.innerHTML = '';
     metaNoteBtn.append(
-      el('span', { class: 'mi', 'aria-hidden': 'true', text: '📝' }),
+      el('span', { class: 'mi', 'aria-hidden': 'true' }, [categoryIconNode({ name: '考试' }, { size: 17 })]),
       document.createTextNode(state.note ? (state.note.length > 10 ? state.note.slice(0, 10) + '…' : state.note) : '添加备注')
     );
     metaNoteBtn.classList.toggle('has-note', !!state.note);
   }
   const metaRow = el('div', { class: 'meta-row' }, [
-    el('button', {
-      class: 'meta-btn', type: 'button',
-      onclick: () => toast('多账本开发中')
+    el('span', {
+      class: 'meta-btn',
     }, [
-      el('span', { class: 'mi', 'aria-hidden': 'true', text: '📖' }),
+      el('span', { class: 'mi', 'aria-hidden': 'true' }, [categoryIconNode({ name: '书籍' }, { size: 17 })]),
       document.createTextNode('我的账本')
     ]),
     metaDateBtn,
@@ -473,7 +475,7 @@ export async function renderAddTransaction(mount, params = {}) {
         return;
       }
       leaving = true;
-      location.hash = '#/';
+      location.hash = returnRoute;
     } catch (e) {
       toast('保存失败：' + (e.message || e));
     } finally {
@@ -492,7 +494,7 @@ export async function renderAddTransaction(mount, params = {}) {
       await deleteTransaction(id);
       toast('已删除');
       vibrate(15);
-      setTimeout(() => { location.hash = '#/'; }, 250);
+      location.hash = returnRoute;
     } catch (e) {
       toast('删除失败');
     }

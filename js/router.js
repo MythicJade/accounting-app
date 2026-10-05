@@ -5,6 +5,9 @@ export class Router {
     this.routes = [];
     this.currentCleanup = null;
     this.enterAnimationTimer = null;
+    this.scrollPositions = new Map();
+    this.currentHash = null;
+    this.currentPath = null;
   }
 
   register(pattern, handler) {
@@ -50,8 +53,12 @@ export class Router {
   }
 
   async renderCurrent() {
-    const hash = location.hash.slice(1) || '/';
-    let matched = null, params = {};
+    const fullHash = location.hash || '#/';
+    if (this.currentHash && this.currentHash !== fullHash) this.scrollPositions.set(this.currentHash, window.scrollY);
+    const rawHash = location.hash.slice(1) || '/';
+    const queryStart = rawHash.indexOf('?');
+    const hash = queryStart === -1 ? rawHash : rawHash.slice(0, queryStart);
+    let matched = null, params = { query: new URLSearchParams(queryStart === -1 ? '' : rawHash.slice(queryStart + 1)) };
     for (const r of this.routes) {
       const m = r.re.exec(hash);
       if (m) {
@@ -67,6 +74,10 @@ export class Router {
     }
     // update tab active state
     this.updateTabbar(hash);
+    const samePath = this.currentPath === hash;
+    const restoreScroll = this.currentHash === fullHash ? window.scrollY : (this.scrollPositions.get(fullHash) || 0);
+    this.currentHash = fullHash;
+    this.currentPath = hash;
     // scroll top
     window.scrollTo(0, 0);
     if (!matched) {
@@ -82,8 +93,9 @@ export class Router {
         this.currentCleanup = result;
       }
       if (!this.pending) {
-        this.playEnterAnimation();
+        if (!samePath) this.playEnterAnimation();
         this.mount.focus({ preventScroll: true });
+        window.scrollTo(0, restoreScroll);
       }
     } catch (e) {
       console.error('Route render error:', e);
@@ -108,7 +120,8 @@ export class Router {
     const tabs = document.querySelectorAll('.tabbar .tab[data-route]');
     tabs.forEach(t => {
       const route = t.dataset.route;
-      const isActive = hash === route || (route === '/' && (hash === '' || hash === '/'));
+      const isActive = hash === route || (route !== '/' && hash.startsWith(route + '/')) ||
+        (route === '/' && (hash === '' || hash === '/'));
       t.classList.toggle('active', isActive);
     });
   }
@@ -116,6 +129,14 @@ export class Router {
   go(path) {
     if (!path.startsWith('#')) path = '#' + path;
     location.hash = path;
+  }
+
+  replaceState(path) {
+    const hash = path.startsWith('#') ? path : '#' + path;
+    if (hash.slice(1).split('?')[0] !== this.currentPath ||
+        (location.hash.slice(1).split('?')[0] || '/') !== this.currentPath || this.pending) return;
+    history.replaceState(null, '', hash);
+    this.currentHash = hash;
   }
 }
 

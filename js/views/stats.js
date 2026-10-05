@@ -5,9 +5,11 @@ import { listAccounts } from '../accounts.js';
 import { getRange, shiftRange, rangeLabel, listDates, formatMoney, formatDateStr, monthKeyToLabel, getCustomRange, todayStr } from '../format.js';
 import { el } from '../ui.js';
 import { drawPieChart } from '../charts/pie-chart.js';
-import { drawLineChart } from '../charts/line-chart.js';
+import { drawLineChart, disposeLineChart } from '../charts/line-chart.js';
 import { categoryIconNode } from '../category-icons.js';
-import { cssVar, themePalette } from '../theme.js';
+import { cssVar, readableCategoryColor, categoryColorStyle } from '../theme.js';
+import { isValidDateOnly, todayDateOnly } from '../date-only.js';
+import { router } from '../router.js';
 
 const PERIODS = [
   { key: 'month',   label: '月' },
@@ -42,21 +44,34 @@ function ensureRange() {
   }
 }
 
-export async function renderStats(mount) {
+export async function renderStats(mount, { query } = {}) {
   let renderRevision = 0;
   let disposed = false;
   let lastPieData = [];
+  const from = query?.get('from'), to = query?.get('to');
+  if (isValidDateOnly(from) && isValidDateOnly(to) && from <= to) {
+    _state.period = PERIODS.some(period => period.key === query.get('period')) ? query.get('period') : 'custom';
+    _state.range = getCustomRange(from, to);
+    _state.view = query.get('type') === 'income' ? 'income' : 'expense';
+    _state.accountId = query.get('account') || null;
+    _state.selectedSlice = _state.selectedPoint = null;
+    if (_state.period === 'custom') {
+      _state.customStart = from;
+      _state.customEnd = to;
+    }
+  }
   ensureRange();
 
   // Account filter chips
-  const accounts = await listAccounts();
+  const accounts = await listAccounts({ includeArchived: true });
   const accountChips = el('div', { class: 'account-chips stats-account-chips', 'aria-label': '按账户筛选' });
   const allAccChip = el('button', { class: 'chip' + (_state.accountId === null ? ' active' : ''), text: '全部' });
   allAccChip.addEventListener('click', () => { _state.accountId = null; render(); });
   accountChips.appendChild(allAccChip);
   accounts.forEach(acc => {
     const chip = el('button', { class: 'chip' + (_state.accountId === acc.id ? ' active' : '') }, [
-      document.createTextNode(acc.icon + ' ' + acc.name)
+      categoryIconNode(acc, { size: 16 }),
+      document.createTextNode(' ' + acc.name + (acc.archived ? '（已归档）' : ''))
     ]);
     chip.addEventListener('click', () => { _state.accountId = acc.id; render(); });
     accountChips.appendChild(chip);
@@ -273,10 +288,13 @@ export async function renderStats(mount) {
     // summary
     const type = _state.view;
     const [transactions, allCats] = await Promise.all([
-      listTransactions({ dateFrom: range.start, dateTo: range.end, accountId: accId }),
+      listTransactions({ dateFrom: range.start, dateTo: range.end < todayDateOnly() ? range.end : todayDateOnly(), accountId: accId }),
       listCategories(null, { includeArchived: true })
     ]);
     if (disposed || revision !== renderRevision) return;
+    const routeQuery = new URLSearchParams({ period: _state.period, type, from: range.start, to: range.end });
+    if (accId) routeQuery.set('account', accId);
+    router.replaceState('#/stats?' + routeQuery);
     let incomeCents = 0, expenseCents = 0;
     const categoryCents = new Map(), dailyCents = new Map();
     for (const transaction of transactions) {
@@ -297,15 +315,11 @@ export async function renderStats(mount) {
     let pieData = [];
     catMap.forEach((val, id) => {
       const c = catById.get(id) || { name: '未分类', color: '#aeaeb2', icon: '❓' };
-      pieData.push({ label: c.name, value: val, color: c.color, id });
+      pieData.push({ label: c.name, value: val, color: readableCategoryColor(c.color), baseColor: c.color, id });
     });
     pieData.sort((a, b) => b.value - a.value);
 
-    // v2.2.0 统一配色：饼图切片按「金额排名」取用当前主题的分类调色板，
-    // 相邻扇区恒为不同色相 —— 根治分类自选色组合凌乱的问题。
-    // 排行条目的色点/进度条复用同一颜色，保证图例一致。
-    const palette = themePalette();
-    pieData.forEach((d, i) => { d.color = palette[i % palette.length]; });
+    // Saved category colors are stable across ranks; chart, icon and bar agree.
 
     // reset selection if out of range
     if (_state.selectedSlice != null && _state.selectedSlice >= pieData.length) {
@@ -371,8 +385,14 @@ export async function renderStats(mount) {
       pieData.forEach(d => {
         const pct = total > 0 ? Math.round(d.value / total * 100) : 0;
         const catObj = allCats.find(c => c.id === d.id);
-        const item = el('div', { class: 'cat-rank-item' }, [
-          el('div', { class: 'icon category-line-icon', style: `background:${d.color}18;color:${d.color}` }, [categoryIconNode(catObj || { name: d.label, icon: '➕' }, { size: 21 })]),
+        const query = new URLSearchParams({ period: _state.period, type, from: range.start, to: range.end });
+        if (accId) query.set('account', accId);
+        const item = el('a', {
+          class: 'cat-rank-item cat-rank-link',
+          href: `#/stats/category/${encodeURIComponent(d.id)}?${query}`,
+          'aria-label': `查看${d.label}的${type === 'expense' ? '支出' : '收入'}流水`
+        }, [
+          el('div', { class: 'icon category-line-icon', style: categoryColorStyle(d.baseColor) }, [categoryIconNode(catObj || { name: d.label, icon: '➕' }, { size: 21 })]),
           el('div', { class: 'info' }, [
             el('div', { class: 'row1' }, [
               el('span', { class: 'name', text: d.label }),
@@ -380,7 +400,8 @@ export async function renderStats(mount) {
             ]),
             el('div', { class: 'bar' }, [ el('i', { style: `width:${pct}%;background:${d.color}` }) ])
           ]),
-          el('div', { class: 'amount', text: formatMoney(d.value) })
+          el('div', { class: 'amount', text: formatMoney(d.value) }),
+          el('span', { class: 'rank-chevron', 'aria-hidden': 'true', text: '›' })
         ]);
         rankList.appendChild(item);
       });
@@ -403,10 +424,14 @@ export async function renderStats(mount) {
     resizeFrame = requestAnimationFrame(() => { if (!disposed) { redrawPie(); redrawLineChart(); } });
   });
   observer.observe(pieCard);
+  const themeChanged = () => { if (!disposed) render(); };
+  window.addEventListener('accounting-theme-change', themeChanged);
   return () => {
     disposed = true;
     observer.disconnect();
     cancelAnimationFrame(resizeFrame);
     cancelAnimationFrame(pieCanvas._pieAnimationFrame);
+    disposeLineChart(lineCanvas);
+    window.removeEventListener('accounting-theme-change', themeChanged);
   };
 }

@@ -92,9 +92,10 @@ export async function renderCategoryEditor(mount, params = {}) {
   const selectedType = category?.type || (params.type === 'income' ? 'income' : 'expense');
   const exactOption = category ? CATEGORY_ICON_OPTIONS.find(option => option.token === category.icon) : null;
   const compatibleOption = category ? CATEGORY_ICON_OPTIONS.find(option => option.key === resolveCategoryIconKey(category)) : null;
-  let selectedIcon = exactOption?.token || compatibleOption?.token || (selectedType === 'income' ? ICON_META.salary.token : ICON_META.food.token);
+  // Keep the saved token until an icon is explicitly chosen, including legacy/unknown tokens.
+  let selectedIcon = category ? (category.icon || '') : (selectedType === 'income' ? ICON_META.salary.token : ICON_META.food.token);
   let selectedColor = category?.color || COLORS[0];
-  let selectedKey = CATEGORY_ICON_OPTIONS.find(option => option.token === selectedIcon)?.key || (selectedType === 'income' ? 'salary' : 'food');
+  let selectedKey = exactOption?.key || compatibleOption?.key || (selectedType === 'income' ? 'salary' : 'food');
   let activeGroupId = ICON_GROUPS.find(group => group.keys.includes(selectedKey))?.id || ICON_GROUPS[0].id;
   let saving = false;
 
@@ -122,6 +123,7 @@ export async function renderCategoryEditor(mount, params = {}) {
   const colorCard = el('section', { class: 'category-editor-color-card' }, [colorRow]);
   const groupRail = el('div', { class: 'category-editor-groups', role: 'tablist', 'aria-label': '图标分组' });
   const iconGrid = el('div', { class: 'category-editor-icons', role: 'listbox', 'aria-label': '分类图标' });
+  const pickerLabel = el('div', { class: 'category-editor-label', 'aria-live': 'polite' });
   const iconPicker = el('div', { class: 'category-editor-picker' }, [groupRail, iconGrid]);
 
   const secondaryButton = el('button', {
@@ -137,7 +139,7 @@ export async function renderCategoryEditor(mount, params = {}) {
     el('div', { class: 'category-editor-scroll' }, [
       nameCard,
       colorCard,
-      el('div', { class: 'category-editor-label', text: '分类图标' }),
+      pickerLabel,
       iconPicker
     ]),
     actionBar
@@ -155,6 +157,8 @@ export async function renderCategoryEditor(mount, params = {}) {
     previewIcon.style.background = selectedColor;
     previewIcon.replaceChildren(categoryIconNode({ icon: selectedIcon, name: nameInput.value }, { size: 29 }));
     nameCount.textContent = `${nameInput.value.length}/${MAX_NAME_LENGTH}`;
+    const group = ICON_GROUPS.find(item => item.id === activeGroupId);
+    pickerLabel.textContent = `${group.label} · ${group.keys.length} 个　已选：${ICON_META[selectedKey].label}`;
     nameCount.classList.toggle('over', nameInput.value.length > MAX_NAME_LENGTH);
   }
 
@@ -173,22 +177,30 @@ export async function renderCategoryEditor(mount, params = {}) {
       type: 'button', role: 'tab', 'aria-selected': String(activeGroupId === group.id),
       text: group.short || group.label.slice(0, 1),
       'aria-label': group.label,
-      onclick: () => { activeGroupId = group.id; renderGroups(); renderIcons(); }
+      onclick: () => { activeGroupId = group.id; renderGroups(); renderIcons(); refreshPreview(); }
     })));
+    const active = groupRail.querySelector('[aria-selected="true"]');
+    const railBox = groupRail.getBoundingClientRect();
+    const activeBox = active.getBoundingClientRect();
+    if (activeBox.top < railBox.top) groupRail.scrollTop -= railBox.top - activeBox.top;
+    else if (activeBox.bottom > railBox.bottom) groupRail.scrollTop += activeBox.bottom - railBox.bottom;
   }
 
   function renderIcons() {
     const group = ICON_GROUPS.find(item => item.id === activeGroupId) || ICON_GROUPS[0];
     iconGrid.replaceChildren(...group.keys.map(key => {
       const meta = ICON_META[key];
-      const selected = selectedIcon === meta.token;
+      const selected = selectedKey === key;
       return el('button', {
         class: 'category-editor-icon' + (selected ? ' selected' : ''), type: 'button',
-        role: 'option', 'aria-selected': String(selected), 'aria-label': `选择${meta.label}图标`,
+        role: 'option', 'aria-selected': String(selected), 'aria-label': `选择${meta.label}图标`, title: meta.label,
         onclick: () => { selectedIcon = meta.token; selectedKey = key; renderIcons(); refreshPreview(); }
       }, [categoryIconNode({ icon: meta.token, name: meta.label }, { size: 27 }), el('span', { text: meta.label })]);
     }));
     iconGrid.scrollTop = 0;
+    // Editing an icon near the end of a large group should reveal its selected tile.
+    const selectedTile = iconGrid.querySelector('[aria-selected="true"]');
+    if (selectedTile) iconGrid.scrollTop = Math.max(0, selectedTile.offsetTop - iconGrid.offsetTop - 12);
   }
 
   nameInput.addEventListener('input', refreshPreview);

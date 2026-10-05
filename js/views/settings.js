@@ -1,13 +1,14 @@
 // js/views/settings.js — settings: export/import/clear + about
-import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions, getAllTransactions, getAssetsSummary, monthlySummary, getBudget, listRecoveryPoints, restoreRecoveryPoint, getBackupStatus, recordBackupExport } from '../store.js';
-import { formatMoney, currentMonthKey } from '../format.js';
-import { exportToExcel, previewExcelImport, importParsedData } from '../excel-io.js';
+import { exportAll, importAll, previewBackupImport, clearAllData, countTransactions, getAllTransactions, listRecoveryPoints, restoreRecoveryPoint, getBackupStatus, recordBackupExport } from '../store.js';
+import { exportToExcel, previewExcelImport, importParsedData, resolveExcelTypes } from '../excel-io.js';
 import { toast, confirmDialog, showModal, promptDialog, el } from '../ui.js';
 import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
 import { router } from '../router.js';
 import { APP_VERSION } from '../version.js';
 import { isNativeApp, shareTextFile } from '../native-bridge.js';
 import { THEMES, getThemeKey, setThemeKey } from '../theme.js';
+import { categoryIconNode } from '../category-icons.js';
+import { formatMoney } from '../format.js';
 
 export async function renderSettings(mount) {
   // ===== v2.3.0 用户头部 + 功能台数据 =====
@@ -22,14 +23,9 @@ export async function renderSettings(mount) {
       streakDays = Math.max(1, Math.floor((Date.now() - d0.getTime()) / 86400000) + 1);
     }
   } catch (e) { /* ignore */ }
-  const assets = await getAssetsSummary();
-  const mk = currentMonthKey();
-  const [monthSum, monthBudget] = await Promise.all([monthlySummary(mk, null), getBudget(mk)]);
-  const goalLimit = monthBudget ? monthBudget.limit : 0;
-  const goalPct = goalLimit > 0 ? Math.min(100, Math.round(monthSum.expense / goalLimit * 100)) : 0;
 
   const profileHead = el('header', { class: 'profile-head' }, [
-    el('div', { class: 'profile-avatar', 'aria-hidden': 'true', text: '📒' }),
+    el('div', { class: 'profile-avatar', 'aria-hidden': 'true' }, [categoryIconNode({ name: '书籍' }, { size: 30 })]),
     el('div', { class: 'profile-main' }, [
       el('div', { class: 'profile-name' }, [
         document.createTextNode('我的记账'),
@@ -46,53 +42,22 @@ export async function renderSettings(mount) {
     ])
   ]);
 
-  // 快捷功能 4×2 图标格
+  // Four daily-use shortcuts; backup and migration tools live in data management.
   const quickDefs = [
-    { icon: '📤', label: '导出数据', run: onExport },
-    { icon: '📥', label: '导入数据', run: onImport },
-    { icon: '📊', label: 'Excel导出', run: onExportExcel },
-    { icon: '📑', label: 'Excel导入', run: onImportExcel },
-    { icon: '🎯', label: '预算管理', run: () => { location.hash = '#/budget'; } },
-    { icon: '💳', label: '账户管理', run: () => { location.hash = '#/accounts'; } },
-    { icon: '🏷️', label: '分类管理', run: () => { location.hash = '#/categories'; } },
-    { icon: '📱', label: '安装/帮助', run: onShowInstallGuide }
+    { icon: '理财', label: '预算管理', run: () => { location.hash = '#/budget'; } },
+    { icon: '银行卡', label: '账户管理', run: () => { location.hash = '#/accounts'; } },
+    { icon: '礼品', label: '分类管理', run: () => { location.hash = '#/categories'; } },
+    { icon: '搜索', label: '搜索账单', run: () => { location.hash = '#/transactions?mode=search'; } }
   ];
   const quickCard = el('section', { class: 'card quick-card' }, [
     el('div', { class: 'quick-grid' },
       quickDefs.map(d => el('button', { class: 'quick-tile', type: 'button', onclick: d.run }, [
-        el('span', { class: 'quick-icon', 'aria-hidden': 'true', text: d.icon }),
+        el('span', { class: 'quick-icon', 'aria-hidden': 'true' }, [d.icon === '搜索'
+          ? el('svg', { viewBox: '0 0 24 24', width: '24', height: '24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', html: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>' })
+          : categoryIconNode({ name: d.icon }, { size: 24 })]),
         el('span', { class: 'lbl', text: d.label })
       ]))
     )
-  ]);
-
-  // 净资产总览卡
-  const naCard = el('section', { class: 'card na-card' }, [
-    el('div', { class: 'na-main' }, [
-      el('div', { class: 'na-label', text: '净资产' }),
-      el('div', { class: 'na-value', text: formatMoney(assets.netAssets) }),
-      el('div', { class: 'na-sub' }, [
-        el('span', { text: '资产 ' + formatMoney(assets.totalAssets) }),
-        el('span', { class: 'neg', text: '负债 ' + formatMoney(assets.totalLiabilities) })
-      ])
-    ]),
-    el('div', { class: 'na-div', 'aria-hidden': 'true' }),
-    el('a', { class: 'na-link', href: '#/assets' }, [
-      el('span', { class: 'ic', 'aria-hidden': 'true', text: '🏦' }),
-      el('span', { text: '查看总资产' })
-    ])
-  ]);
-
-  // 本月预算完成度卡
-  const goalCard = el('section', { class: 'card goal-card' }, [
-    el('div', { class: 'goal-top' }, [
-      el('span', { class: 'goal-label', text: goalLimit > 0 ? '本月预算完成度' : '本月预算' }),
-      el('span', { class: 'goal-pct', text: goalLimit > 0 ? `${goalPct}%` : '未设置' })
-    ]),
-    el('div', { class: 'goal-bar' }, [
-      el('i', { class: goalPct >= 100 ? 'over' : '', style: `width:${goalLimit > 0 ? goalPct : 0}%` })
-    ]),
-    el('a', { class: 'goal-link', href: '#/budget', text: goalLimit > 0 ? `已消费 ${formatMoney(monthSum.expense)} / 预算 ${formatMoney(goalLimit)} · 管理 ›` : '设置预算，让消费更有数 ›' })
   ]);
 
   // 功能管理：首页显示开关（行内开关，设置即时生效于下次进入首页）
@@ -154,13 +119,16 @@ export async function renderSettings(mount) {
   const appearanceCard = el('section', { class: 'card appearance-card' }, [
     el('div', { class: 'card-title section-heading', text: '外观主题' }),
     appearanceGrid,
-    el('p', { class: 'text-sm text-3', style: 'margin-top:8px;', text: '四套配色即点即换，选择自动保存；图表颜色随主题统一' })
+    el('p', { class: 'text-sm text-3', style: 'margin-top:8px;', text: '主题自动保存；分类颜色保持固定，暗色模式自动适配对比度' })
   ]);
 
   // Danger group
-  const dangerGroup = el('div', { class: 'setting-list mt-16' }, [
-    el('button', { class: 'setting-item danger', type: 'button', onclick: onClear }, [
-      el('div', { class: 'icon', text: '🗑️' }),
+  const dangerGroup = el('details', { class: 'setting-list mt-16 danger-operations' }, [
+    el('summary', { text: '危险操作' }),
+    el('p', { class: 'text-sm text-2', text: '清空前请先保存一份可恢复的文件备份。' }),
+    el('button', { class: 'btn btn-ghost', type: 'button', text: '先导出备份', onclick: onExport }),
+    el('button', { class: 'setting-item danger', type: 'button', 'aria-label': '清空所有数据', onclick: onClear }, [
+      el('div', { class: 'icon' }, [categoryIconNode({ name: '清洁' })]),
       el('div', { class: 'text', text: '清空所有数据' }),
       el('div', { class: 'arrow', text: '›' })
     ])
@@ -169,7 +137,7 @@ export async function renderSettings(mount) {
   // Help group
   const helpGroup = el('div', { class: 'setting-list mt-16' }, [
     el('button', { class: 'setting-item', type: 'button', onclick: onShowInstallGuide }, [
-      el('div', { class: 'icon', text: '📱' }),
+      el('div', { class: 'icon' }, [categoryIconNode({ name: '话费' })]),
       el('div', { class: 'text' }, [
         el('div', { text: isNativeApp() ? 'Android 应用信息' : '安装到手机主屏' }),
         el('div', { class: 'text-sm text-3', text: isNativeApp() ? '本机离线版与数据说明' : '查看真机安装步骤' })
@@ -177,7 +145,7 @@ export async function renderSettings(mount) {
       el('div', { class: 'arrow', text: '›' })
     ]),
     el('button', { class: 'setting-item', type: 'button', onclick: onShowExcelSpec }, [
-      el('div', { class: 'icon', text: 'ℹ️' }),
+      el('div', { class: 'icon' }, [categoryIconNode({ name: '学习资料' })]),
       el('div', { class: 'text' }, [
         el('div', { text: 'Excel 格式说明' }),
         el('div', { class: 'text-sm text-3', text: '查看支持的列定义' })
@@ -185,14 +153,14 @@ export async function renderSettings(mount) {
       el('div', { class: 'arrow', text: '›' })
     ]),
     el('button', { class: 'setting-item', type: 'button', onclick: onShowAbout }, [
-      el('div', { class: 'icon', text: 'ℹ️' }),
+      el('div', { class: 'icon' }, [categoryIconNode({ name: '书籍' })]),
       el('div', { class: 'text', text: '关于' }),
       el('div', { class: 'arrow', text: '›' })
     ])
   ]);
 
   const about = el('div', { class: 'about-block' }, [
-    el('div', { class: 'logo', text: '📒' }),
+    el('div', { class: 'logo' }, [categoryIconNode({ name: '书籍' }, { size: 32 })]),
     el('div', { text: '我的记账 v' + APP_VERSION }),
     el('div', { class: 'text-sm', text: '默认纯本地运行 · 备份可密码加密' })
   ]);
@@ -200,16 +168,19 @@ export async function renderSettings(mount) {
   const backupStatus = el('p', { class: 'backup-status', role: 'status' });
   const recoverySummary = el('p', { class: 'text-sm text-2' });
   const backupCard = el('section', { class: 'card backup-card' }, [
-    el('div', { class: 'card-title section-heading', text: '备份与恢复' }),
+    el('div', { class: 'card-title section-heading', text: '数据管理' }),
     backupStatus, recoverySummary,
     el('div', { class: 'backup-actions' }, [
       el('button', { class: 'btn', type: 'button', text: '导出备份', onclick: onExport }),
+      el('button', { class: 'btn btn-ghost', type: 'button', text: '导入备份', onclick: onImport }),
+      el('button', { class: 'btn btn-ghost', type: 'button', text: 'Excel导出', onclick: onExportExcel }),
+      el('button', { class: 'btn btn-ghost', type: 'button', text: 'Excel导入', onclick: onImportExcel }),
       el('button', { class: 'btn btn-ghost', type: 'button', text: '本机恢复点', onclick: onRecovery })
     ]),
     el('p', { class: 'backup-hint', text: '每天首次改动及恢复、删除前自动留档，保留最近 3 个恢复点。恢复点仍在本机，不能防止卸载或清除数据；请定期导出到手机文件或其他安全位置。' })
   ]);
   await refreshBackupStatus();
-  mount.append(profileHead, backupCard, quickCard, appearanceCard, naCard, goalCard, switchCard, dangerGroup, helpGroup, about);
+  mount.append(profileHead, quickCard, backupCard, appearanceCard, switchCard, helpGroup, dangerGroup, about);
 
   async function refreshBackupStatus() {
     const [last, points] = await Promise.all([getBackupStatus(), listRecoveryPoints()]);
@@ -302,14 +273,44 @@ export async function renderSettings(mount) {
   excelInput.type = 'file';
   excelInput.accept = '.xlsx,.xls';
   excelInput.style.display = 'none';
+  let importingExcel = false;
   excelInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file || importingExcel) return;
+    importingExcel = true;
     try {
       const sizeKB = Math.round(file.size / 1024);
       // Phase 1: 预扫描
       toast('正在解析 Excel...');
-      const preview = await previewExcelImport(file);
+      let preview = await previewExcelImport(file);
+      if (preview.needsConfirmation.length) {
+        const choices = new Map();
+        const body = el('div', { class: 'import-confirmation-list' }, [
+          el('p', { class: 'text-sm text-2', text: '以下行的类型缺失或未识别。逐条选择后才能继续；取消不会写入任何数据。' }),
+          ...preview.needsConfirmation.map(row => el('div', { class: 'import-confirmation-row' }, [
+            el('strong', { text: `第 ${row.rowNumber} 行 · ${row.rawType || '类型缺失'}` }),
+            el('p', { class: 'text-sm text-2', text: `${row.date} · ${formatMoney(row.amountCents / 100)} · ${row.rawCat || '未填分类'}` }),
+            el('p', { class: 'text-sm text-2', text: `${row.rawFrom || '未填账户'} → ${row.rawTo || '未填转入账户'}` }),
+            el('select', { class: 'select', 'aria-label': `第 ${row.rowNumber} 行类型`, onchange: event => choices.set(row.rowNumber, event.target.value) }, [
+              el('option', { value: '', text: '请选择类型' }),
+              el('option', { value: 'expense', text: '支出' }),
+              el('option', { value: 'income', text: '收入' }),
+              el('option', { value: 'transfer', text: '转账' })
+            ])
+          ]))
+        ]);
+        const confirmed = await showModal({ title: `需要确认（${preview.needsConfirmation.length} 条）`, body, actions: [
+          { label: '取消', type: 'ghost', value: false },
+          { label: '确认类型', value: true, onClick: () => {
+            if (preview.needsConfirmation.some(row => !choices.get(row.rowNumber))) {
+              toast('请为每一行选择记账类型'); return false;
+            }
+            return true;
+          } }
+        ] });
+        if (!confirmed) { excelInput.value = ''; return; }
+        preview = await resolveExcelTypes(preview, choices);
+      }
 
       // Phase 2: 显示预览，让用户输入期初余额
       const proceed = await showImportPreview(file, sizeKB, preview);
@@ -333,8 +334,10 @@ export async function renderSettings(mount) {
     } catch (err) {
       console.error(err);
       toast('Excel 导入失败：' + (err.message || err));
+    } finally {
+      excelInput.value = '';
+      importingExcel = false;
     }
-    excelInput.value = '';
   });
   mount.appendChild(excelInput);
 
@@ -426,7 +429,7 @@ export async function renderSettings(mount) {
   }
 
   function onImportExcel() {
-    excelInput.click();
+    if (!importingExcel) excelInput.click();
   }
 
   async function onShowExcelSpec() {
@@ -455,6 +458,7 @@ export async function renderSettings(mount) {
       <ul style="padding-left:18px;color:var(--text-2);font-size:12px;line-height:1.7;">
         <li>系统会自动查找包含"记账日期"表头的工作表</li>
         <li>列名会模糊匹配（如"记账时间（可不填）"会匹配"记账时间"）</li>
+        <li>记账类型缺失或未识别时，会进入“需要确认”列表，不会自动猜成支出</li>
         <li>账户不存在会自动创建（自定义类型）</li>
         <li>分类不存在会自动创建（按支出/收入类型，默认图标颜色可后续修改）</li>
         <li>导入前可预览账户与分类；期初余额应为首笔导入流水发生前的余额，不是今天的余额</li>
@@ -545,14 +549,11 @@ export async function renderSettings(mount) {
       return;
     }
     body.innerHTML = `
-      <p style="margin-bottom:8px;"><b>本机预览</b></p>
-      <ol style="padding-left:18px;margin-bottom:14px;color:var(--text-2);">
-        <li>电脑上启动：<code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">python -m http.server 8080</code></li>
-        <li>电脑浏览器访问 <code style="background:var(--fill-1);padding:2px 4px;border-radius:3px;">http://localhost:8080</code></li>
-      </ol>
       <p style="margin-bottom:8px;"><b>安装到手机</b></p>
-      <p style="color:var(--text-2);">请部署到支持 HTTPS 的静态托管，手机访问后在浏览器菜单中选择「添加到主屏幕」。iPhone 使用 Safari 的分享菜单，Android 使用 Chrome 菜单。</p>
-      <p style="margin-top:14px;color:var(--text-3);font-size:12px;">普通局域网 HTTP 地址不满足 Service Worker 的安全要求，不能保证离线安装。</p>
+      <p style="color:var(--text-2);">用手机浏览器打开正式网站，在菜单中选择「添加到主屏幕」或「安装应用」。首次打开请保持联网，完成后可离线记账。</p>
+      <p style="margin-top:12px;color:var(--text-2);">更新：联网打开应用，有新版本时按更新提示重新加载；更新不会清空账本。</p>
+      <p style="margin-top:12px;color:var(--text-2);">账目只在当前浏览器和设备中保存，不自动同步。换手机、浏览器或 Android 安装版时，请先导出 JSON 备份，再在新应用中导入。</p>
+      <p style="margin-top:12px;color:var(--text-2);">卸载或清除网站数据前务必保存备份文件；本机恢复点不能替代文件备份。</p>
     `;
     await import('../ui.js').then(m => m.showModal({ title: '📱 安装到手机主屏', body, actions: [{ label: '知道了', type: 'primary' }] }));
   }

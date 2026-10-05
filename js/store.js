@@ -69,8 +69,12 @@ export async function getTransaction(id) {
 
 export async function listTransactions(options = {}) {
   if (options.limit && !options.returnPage && !options.offset &&
-      !options.dateFrom && !options.dateTo && !options.type && !options.categoryId && !options.accountId && !options.search) {
+      !options.dateFrom && !options.dateTo && !options.type && !options.categoryId && !options.accountId && !options.search &&
+      options.amountMinCents == null && options.amountMaxCents == null) {
     return (await getRecentTransactions(Number(options.limit))).map(hydrateTransaction);
+  }
+  if (options.dateFrom && options.dateTo && options.dateFrom > options.dateTo) {
+    return options.returnPage ? { items: [], total: 0, ...summarizeTransactions([]) } : [];
   }
   let raw;
   if ((options.dateFrom || options.dateTo) && globalThis.IDBKeyRange) {
@@ -85,6 +89,14 @@ export async function listTransactions(options = {}) {
   if (options.dateTo) result = result.filter(transaction => transaction.date <= options.dateTo);
   if (options.type) result = result.filter(transaction => transaction.type === options.type);
   if (options.categoryId) result = result.filter(transaction => transaction.categoryId === options.categoryId);
+  if (options.amountMinCents != null) {
+    assertCents(options.amountMinCents);
+    result = result.filter(transaction => transaction.amountCents >= options.amountMinCents);
+  }
+  if (options.amountMaxCents != null) {
+    assertCents(options.amountMaxCents);
+    result = result.filter(transaction => transaction.amountCents <= options.amountMaxCents);
+  }
   if (options.accountId) {
     result = result.filter(transaction => transaction.accountId === options.accountId || transaction.toAccountId === options.accountId);
   }
@@ -103,10 +115,29 @@ export async function listTransactions(options = {}) {
   }
   result.sort(compareTransactionsDesc);
   const total = result.length;
+  const summary = options.returnPage ? summarizeTransactions(result) : null;
   const offset = Math.max(0, Number(options.offset || 0));
   if (offset) result = result.slice(offset);
   if (options.limit) result = result.slice(0, Number(options.limit));
-  return options.returnPage ? { items: result, total } : result;
+  return options.returnPage ? { items: result, total, ...summary } : result;
+}
+
+// Aggregate the entire matched set before pagination; money never uses floating-point sums.
+export function summarizeTransactions(transactions, cutoff = todayDateOnly()) {
+  let incomeCents = 0, expenseCents = 0;
+  const days = {};
+  for (const transaction of transactions) {
+    const day = days[transaction.date] ||= { incomeCents: 0, expenseCents: 0 };
+    if (transaction.type === 'income') {
+      if (transaction.date <= cutoff) incomeCents += transaction.amountCents;
+      day.incomeCents += transaction.amountCents;
+    }
+    if (transaction.type === 'expense') {
+      if (transaction.date <= cutoff) expenseCents += transaction.amountCents;
+      day.expenseCents += transaction.amountCents;
+    }
+  }
+  return { incomeCents, expenseCents, balanceCents: incomeCents - expenseCents, days };
 }
 
 export async function getAllTransactions() {
@@ -212,6 +243,7 @@ export async function listBudgets() {
 
 // ===== Aggregations =====
 export async function sumByType(dateFrom, dateTo, accountId) {
+  dateTo = dateTo && dateTo < todayDateOnly() ? dateTo : todayDateOnly();
   const transactions = await listTransactions({ dateFrom, dateTo, accountId });
   let incomeCents = 0;
   let expenseCents = 0;
@@ -232,6 +264,7 @@ export async function monthlySummary(monthKey, accountId) {
 }
 
 export async function categoryBreakdown(dateFrom, dateTo, type = 'expense', accountId) {
+  dateTo = dateTo && dateTo < todayDateOnly() ? dateTo : todayDateOnly();
   const transactions = await listTransactions({ dateFrom, dateTo, type, accountId });
   const cents = new Map();
   for (const transaction of transactions) cents.set(transaction.categoryId, (cents.get(transaction.categoryId) || 0) + transaction.amountCents);
@@ -239,6 +272,7 @@ export async function categoryBreakdown(dateFrom, dateTo, type = 'expense', acco
 }
 
 export async function dailyTotals(dateFrom, dateTo, type = 'expense', accountId) {
+  dateTo = dateTo && dateTo < todayDateOnly() ? dateTo : todayDateOnly();
   const transactions = await listTransactions({ dateFrom, dateTo, type, accountId });
   const cents = new Map();
   for (const transaction of transactions) cents.set(transaction.date, (cents.get(transaction.date) || 0) + transaction.amountCents);
@@ -249,7 +283,7 @@ export async function transferMoney({ fromId, toId, amount, note, date }) {
   return addTransaction({ type: 'transfer', amount, accountId: fromId, toAccountId: toId, note, date });
 }
 
-export async function getAccountBalance(accountId, cutoff = '9999-12-31') {
+export async function getAccountBalance(accountId, cutoff = todayDateOnly()) {
   const account = await get(Stores.ACCOUNTS, accountId);
   if (!account) return 0;
   let balanceCents = account.openingDate <= cutoff ? Number(account.openingBalanceCents || 0) : 0;
@@ -261,7 +295,7 @@ export async function getAccountBalance(accountId, cutoff = '9999-12-31') {
   return fromCents(balanceCents);
 }
 
-export async function getAllAccountBalances(cutoff = '9999-12-31') {
+export async function getAllAccountBalances(cutoff = todayDateOnly()) {
   const { transactions, accounts } = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS]);
   return balancesFromSnapshot(transactions, accounts, cutoff);
 }
@@ -288,14 +322,14 @@ function balancesFromSnapshot(transactions, accounts, cutoff) {
   return new Map(Array.from(cents, ([key, value]) => [key, fromCents(value)]));
 }
 
-export async function getTotalBalance(cutoff = '9999-12-31') {
+export async function getTotalBalance(cutoff = todayDateOnly()) {
   const balances = await getAllAccountBalances(cutoff);
   let cents = 0;
   for (const value of balances.values()) cents += toCents(value);
   return fromCents(cents);
 }
 
-export async function getAssetsSummary(cutoff = '9999-12-31') {
+export async function getAssetsSummary(cutoff = todayDateOnly()) {
   const { transactions, accounts } = await readSnapshot([Stores.TRANSACTIONS, Stores.ACCOUNTS]);
   return assetsFromSnapshot(transactions, accounts, cutoff);
 }

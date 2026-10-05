@@ -1,5 +1,5 @@
-/* My Accounting PWA v2.5.0 application shell. */
-const CACHE_NAME = 'accounting-v2.5.0';
+/* My Accounting PWA v2.6.0 application shell. */
+const CACHE_NAME = 'accounting-v2.6.0';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -22,6 +22,8 @@ const PRECACHE_URLS = [
   './js/money.js',
   './js/format.js',
   './js/router.js',
+  './js/navigation.js',
+  './js/views/transaction-detail.js',
   './js/ui.js',
   './js/version.js',
   './js/views/home.js',

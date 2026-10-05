@@ -87,7 +87,8 @@ export function dateWithWeekday(dateStr) {
   const weekday = '周' + WEEK_DAYS[d.getDay()];
   if (dateStr === todayStr_) return '今天 ' + weekday;
   if (dateStr === yStr) return '昨天 ' + weekday;
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+  const year = d.getFullYear() !== today.getFullYear() ? d.getFullYear() + '年' : '';
+  return `${year}${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
 }
 
 export function formatTime(ts) {

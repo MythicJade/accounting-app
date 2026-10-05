@@ -11,9 +11,10 @@ import { renderAccounts } from './views/accounts.js';
 import { renderAccountDetail } from './views/account-detail.js';
 import { renderAssetsTrend } from './views/assets-trend.js';
 import { renderCategories, renderCategoryEditor } from './views/categories.js';
-import { renderTransactions } from './views/transactions.js';
+import { renderTransactions, renderCategoryTransactions, renderAccountTransactions } from './views/transactions.js';
 import { registerPWA } from './pwa.js';
 import { applySavedTheme } from './theme.js';
+import { renderTransactionDetail } from './views/transaction-detail.js';
 
 // v2.2.0：在任何视图渲染前恢复用户选择的主题（鎏金暖阳/青屿/靛夜星辉/暗夜）
 applySavedTheme();
@@ -24,11 +25,14 @@ window.toast = toast;
 router.register('/', renderHome);
 router.register('/add', renderAddTransaction);
 router.register('/edit/:id', renderAddTransaction);
+router.register('/transaction/:id', renderTransactionDetail);
 router.register('/stats', renderStats);
+router.register('/stats/category/:categoryId', renderCategoryTransactions);
 router.register('/budget', renderBudget);
 router.register('/settings', renderSettings);
 router.register('/accounts', renderAccounts);
 router.register('/accounts/:id', renderAccountDetail);
+router.register('/accounts/:id/transactions', renderAccountTransactions);
 router.register('/assets', renderAssetsTrend);
 router.register('/categories', renderCategories);
 router.register('/categories/new/:type', renderCategoryEditor);
@@ -58,3 +62,22 @@ async function main() {
 }
 
 main();
+
+// Recheck the local calendar on resume and at midnight. Never interrupt an amount editor.
+let renderedDate = new Date().toDateString();
+function refreshCalendar() {
+  const date = new Date().toDateString();
+  const [path, query = ''] = location.hash.split('?');
+  const editing = /^#\/(?:add|edit|categories\/new|categories\/edit)(?:\/|\?|$)/.test(location.hash) ||
+    (/^#\/accounts\/[^/]+$/.test(path) && new URLSearchParams(query).get('tab') === 'edit') ||
+    document.activeElement?.matches('input, textarea, [contenteditable="true"]') ||
+    document.querySelector('.modal-mask');
+  if (date !== renderedDate && !document.hidden && !editing) {
+    renderedDate = date;
+    router.dispatch();
+  }
+}
+document.addEventListener('visibilitychange', refreshCalendar);
+window.addEventListener('pageshow', refreshCalendar);
+window.addEventListener('focus', refreshCalendar);
+setInterval(refreshCalendar, 30000);

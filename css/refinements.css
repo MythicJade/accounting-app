@@ -7,7 +7,7 @@
 .view { padding-top: calc(12px + var(--safe-top)); }
 .topbar { margin-bottom: 12px; }
 .topbar h1, .category-editor-head h1 { font-size: 20px; font-weight: 650; }
-.topbar .back { width: 40px; height: 40px; box-shadow: none; }
+.topbar .back { width: 40px; height: 40px; box-shadow: none; background: var(--card); color: var(--text); transition-property: transform; }
 .card { box-shadow: var(--shadow-sm); }
 .text-3, .text-xs, .text-sm { overflow-wrap: anywhere; }
 .section-heading { letter-spacing: .015em; }
@@ -20,7 +20,10 @@
 .btn-ghost { color: var(--c-primary-dark); }
 .btn-danger { color: #fff; }
 .input::placeholder, input::placeholder { color: var(--text-2); opacity: .65; }
-.tx-item { content-visibility: auto; contain-intrinsic-size: auto 68px; }
+.tx-item { content-visibility: auto; contain-intrinsic-size: auto 68px; background: var(--card); color: var(--text); transition-property: transform, box-shadow; }
+.tx-item:active { background: var(--fill-1); }
+.tx-item .account-name { color: var(--text-2); }
+.transaction-pager .btn-ghost { background: var(--c-primary-light); color: var(--c-primary-dark); transition-property: transform, opacity; }
 .tx-item .name, .tx-note { overflow: hidden; text-overflow: ellipsis; }
 .tx-item .amount, .na-value, .summary-amount { font-variant-numeric: tabular-nums; }
 .tx-date-totals, .tx-note { color: var(--text-2); }
@@ -29,6 +32,18 @@
 .cat-rank-item .bar-fill, .goal-bar i, .progress-fill {
   transition: width 420ms var(--motion-ease);
 }
+.cat-rank-link { width: 100%; color: var(--text); text-align: left; border-radius: 10px; }
+.cat-rank-link:active { background: var(--fill-1); }
+.cat-rank-link .icon { flex-shrink: 0; }
+.cat-rank-link .row1 .name { overflow-wrap: anywhere; }
+.cat-rank-link .amount { flex-shrink: 0; font-size: 13px; }
+.rank-chevron { color: var(--text-2); font-size: 20px; }
+.category-history-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.category-history-heading h2 { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.category-history-heading .icon { flex-shrink: 0; }
+.category-history-range, .category-history-account { margin-top: 8px; color: var(--text-2); font-size: 12px; }
+.category-history-total { margin-top: 16px; font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.category-history-hint { margin-top: 10px; font-size: 11px; color: var(--text-2); line-height: 1.6; }
 
 /* Logical viewport, not the panel's physical pixel resolution. Small screens
    and enlarged system fonts may scroll rather than clipping any control. */
@@ -111,3 +126,51 @@ body.route-add .view { min-height: 100dvh; height: 100dvh; overflow-y: auto; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Local review: meaningful motion and compact, readable history/data controls. */
+.category-line-icon { --category-ink: var(--category-light); }
+[data-theme="dark"] .category-line-icon { --category-ink: var(--category-dark); }
+.future-date { display: inline-block; width: fit-content; color: var(--text-2); background: var(--fill-1); border-radius: 5px; font-size: 10px; line-height: 1.6; padding: 1px 5px; }
+.history-totals { margin-top: 6px; font-size: 12px; color: var(--text-2); line-height: 1.6; }
+.transaction-detail-card { text-align: center; }
+.transaction-detail-card > svg { color: var(--c-primary-dark); margin: 4px auto 8px; }
+.transaction-detail-card h2 { font-size: 16px; }
+.detail-amount { font-size: 28px; margin: 12px 0; font-variant-numeric: tabular-nums; }
+.detail-field { display: flex; align-items: flex-start; gap: 18px; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
+.detail-field > :first-child { flex-shrink: 0; }
+.detail-field > :last-child { text-align: right; overflow-wrap: anywhere; white-space: pre-wrap; min-width: 0; }
+.transaction-detail-card > .btn { display: block; margin-top: 18px; }
+.transaction-filters > .select { width: 100%; margin-top: 8px; }
+.transaction-filters input, .transaction-filters select { min-width: 0; }
+.danger-operations { padding: 14px; }
+.danger-operations summary { cursor: pointer; color: var(--expense); font-size: 14px; }
+.danger-operations[open] > * + * { margin-top: 12px; }
+.danger-operations .setting-item { width: 100%; }
+.backup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.backup-actions .btn { font-size: 12px; min-height: 38px; }
+.backup-actions .btn:last-child { grid-column: 1 / -1; }
+.import-confirmation-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.import-confirmation-row p { margin: 6px 0; overflow-wrap: anywhere; }
+.import-confirmation-row select { width: 100%; }
+.stats-account-chips .chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.acct-chip { display: inline-flex; align-items: center; gap: 4px; }
+.acct-chip > svg { flex-shrink: 0; }
+.meta-btn { gap: 4px; min-width: 0; }
+.meta-row { flex-wrap: wrap; }
+.meta-date-btn { max-width: 100%; overflow: visible; flex-shrink: 0; }
+.meta-date-btn .mi { flex-shrink: 0; }
+.meta-date-btn .future-date { margin-left: 2px; }
+.filter-amount-label { margin-top: 10px; font-size: 11px; color: var(--text-2); }
+.topbar h1 { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.history-item { color: var(--text); gap: 8px; }
+.history-item .month { min-width: 70px; flex-shrink: 0; }
+.history-item .amt { font-size: 11px; min-width: 0; max-width: 48%; overflow-wrap: anywhere; }
+.swipe-hint, .view.route-enter .fab-add { animation: none; }
+.view.route-enter .amt-bar { animation: none; }
+
+/* Icon-library audit: available choices should not look disabled. */
+.category-editor-icon { color: var(--text-2); }
+.category-editor-icon.selected,
+html[data-theme="dark"] .category-editor-icon.selected { background: var(--c-primary); color: var(--on-primary); }
+.category-editor-icon:focus-visible { outline: 2px solid var(--c-primary-dark); outline-offset: 2px; }
+.category-editor-label { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }

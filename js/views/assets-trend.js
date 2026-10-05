@@ -3,12 +3,14 @@
 //         不再整页刷新；图表上的触摸不再触发「右滑返回账户」手势。
 import { monthlyAssetTrend } from '../store.js';
 import { formatMoney } from '../format.js';
-import { drawMultiLineChart } from '../charts/line-chart.js';
+import { drawMultiLineChart, disposeLineChart } from '../charts/line-chart.js';
 import { el } from '../ui.js';
 import { cssVar } from '../theme.js';
+import { router } from '../router.js';
 
-export async function renderAssetsTrend(mount) {
-  let year = new Date().getFullYear();
+export async function renderAssetsTrend(mount, { query } = {}) {
+  let year = /^\d{4}$/.test(query?.get('year')) ? Number(query.get('year')) : new Date().getFullYear();
+  let revision = 0, disposed = false, frame = 0, chartCanvas;
   let selectedIdx = null;    // X 轴索引（月），null = 未选中
   let lastSeries = [];       // 最近一次绘制的数据系列（scrub 局部重绘用）
   let latestData = null;     // 年度内最后一个月有数据的记录
@@ -20,25 +22,28 @@ export async function renderAssetsTrend(mount) {
     el('h1', { text: '资产趋势' })
   ]);
 
-  mount.append(topbar, el('div', { id: 'assets-trend-content' }));
+  const content = el('div', { id: 'assets-trend-content' });
+  mount.append(topbar, content);
 
   async function render() {
-    const content = document.getElementById('assets-trend-content');
-    if (!content) return;
+    const token = ++revision;
+    const selectedYear = year;
+    cancelAnimationFrame(frame);
+    disposeLineChart(chartCanvas);
     content.innerHTML = '';
-
-    const data = await monthlyAssetTrend(year);
-
     // 年份导航
     const yearNav = el('div', { class: 'year-nav' }, [
       el('button', { class: 'range-btn', type: 'button', 'aria-label': '上一年', onclick: () => { year--; selectedIdx = null; render(); }, text: '‹' }),
       el('div', { class: 'year-nav-copy' }, [
-        el('span', { class: 'range-label', text: year + '年' }),
-        el('span', { class: 'range-dates', text: `${year}/01/01–${year}/12/31` })
+        el('span', { class: 'range-label', text: selectedYear + '年' }),
+        el('span', { class: 'range-dates', text: `${selectedYear}/01/01–${selectedYear}/12/31` })
       ]),
       el('button', { class: 'range-btn', type: 'button', 'aria-label': '下一年', onclick: () => { year++; selectedIdx = null; render(); }, text: '›' })
     ]);
     content.appendChild(yearNav);
+    router.replaceState('#/assets?year=' + selectedYear);
+    const data = await monthlyAssetTrend(selectedYear);
+    if (disposed || token !== revision) return;
 
     // 年度汇总（取最后一个月有数据的）
     latestData = null;
@@ -94,7 +99,8 @@ export async function renderAssetsTrend(mount) {
         el('span', { class: 'legend-pill asset', text: '资产总额' })
       ])
     ]);
-    const canvas = el('canvas', { style: 'width:100%;height:240px;', role: 'img', tabindex: '0', 'aria-label': `${year}年净资产、总资产和总负债月度趋势，左右滑动查看各月数值` });
+    const canvas = el('canvas', { style: 'width:100%;height:240px;', role: 'img', tabindex: '0', 'aria-label': `${selectedYear}年净资产、总资产和总负债月度趋势，左右滑动查看各月数值` });
+    chartCanvas = canvas;
     const chartHint = el('div', { class: 'text-sm text-3 center', style: 'margin-top:6px;font-size:11px;', text: '在图上滑动即可查看对应月份数值' });
     chartCard.appendChild(canvas);
     chartCard.appendChild(chartHint);
@@ -107,17 +113,17 @@ export async function renderAssetsTrend(mount) {
       {
         label: '净资产',
         color: cssVar('--chart-net', '#D98F06'),
-        data: validData.map(d => ({ label: d.label, value: d.netAssets, fullLabel: year + '年' + d.label }))
+        data: validData.map(d => ({ label: d.label, value: d.netAssets, fullLabel: selectedYear + '年' + d.label }))
       },
       {
         label: '总资产',
         color: cssVar('--chart-asset-trend', '#2E9E8F'),
-        data: validData.map(d => ({ label: d.label, value: d.totalAssets || 0, fullLabel: year + '年' + d.label }))
+        data: validData.map(d => ({ label: d.label, value: d.totalAssets || 0, fullLabel: selectedYear + '年' + d.label }))
       },
       {
         label: '总负债',
         color: cssVar('--chart-liability', '#E05648'),
-        data: validData.map(d => ({ label: d.label, value: d.totalLiabilities || 0, fullLabel: year + '年' + d.label }))
+        data: validData.map(d => ({ label: d.label, value: d.totalLiabilities || 0, fullLabel: selectedYear + '年' + d.label }))
       }
     ];
 
@@ -126,6 +132,7 @@ export async function renderAssetsTrend(mount) {
       selectedIdx = null;
     }
     function redrawChart() {
+      if (disposed || token !== revision) return;
       drawMultiLineChart(canvas, lastSeries, {
         selected: selectedIdx,
         onScrub: (idx) => {
@@ -141,7 +148,7 @@ export async function renderAssetsTrend(mount) {
         valueFormatter: (v) => formatMoney(v)
       });
     }
-    requestAnimationFrame(redrawChart);
+    frame = requestAnimationFrame(redrawChart);
 
     // 月度表格
     const tableCard = el('section', { class: 'card asset-table-card' }, [
@@ -201,6 +208,7 @@ export async function renderAssetsTrend(mount) {
 
   // 返回 cleanup，路由切换时移除监听
   return () => {
+    disposed = true; revision++; cancelAnimationFrame(frame); disposeLineChart(chartCanvas);
     mount.removeEventListener('touchstart', onStart);
     mount.removeEventListener('touchend', onEnd);
   };

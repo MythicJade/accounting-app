@@ -1,5 +1,5 @@
 // js/views/home.js — v2.3.0 明细流首页
-// 排版对齐参考设计：紧凑顶栏（账本 + 资产入口）/ 搜索 / 半圆仪表预算卡（可左右滑切换月份）
+// 紧凑顶栏（账本 + 资产入口）/ 半圆仪表预算卡（可左右滑切换月份）
 // / 日期分组流水（每组头带收支小计，每笔独立卡片 + 彩色实心图标 + 渠道小标签）/ 右下 FAB
 import { listTransactions, monthlySummary, getBudget, setupStarterData } from '../store.js';
 import { listCategories } from '../categories.js';
@@ -8,6 +8,8 @@ import { formatMoney, dateWithWeekday } from '../format.js';
 import { el, toast } from '../ui.js';
 import { router } from '../router.js';
 import { categoryIconNode } from '../category-icons.js';
+import { todayDateOnly } from '../date-only.js';
+import { openTransaction } from '../navigation.js';
 
 let _categoriesCache = null;
 
@@ -48,9 +50,11 @@ function getHomePref(key, fallback = '1') {
 }
 
 export async function renderHome(mount) {
-  const monthKey = currentMonthSafe();
-  const summary = await monthlySummary(monthKey, null);
-  const recent = await listTransactions({ limit: 200 });
+  let disposed = false;
+  let gaugeRevision = 0;
+  const timers = [];
+  const recentPage = await listTransactions({ limit: 200, returnPage: true });
+  const recent = recentPage.items;
   const [catMap, accMap, activeAccounts, activeCategories] = await Promise.all([
     getCategoriesMap(),
     getAccountsMap(),
@@ -65,14 +69,7 @@ export async function renderHome(mount) {
   const nodes = [];
 
   // ===== 紧凑顶栏：账本名 + 资产入口 =====
-  const bookBtn = el('button', {
-    class: 'book-btn', type: 'button',
-    'aria-label': '切换账本',
-    onclick: () => toast('多账本切换开发中')
-  }, [
-    document.createTextNode('我的账本'),
-    el('span', { class: 'caret', 'aria-hidden': 'true', text: '▾' })
-  ]);
+  const bookBtn = el('span', { class: 'book-btn', text: '我的账本' });
   const topbar = el('header', { class: 'home-topbar' }, [
     bookBtn,
     ...(showWallet ? [el('a', {
@@ -82,12 +79,6 @@ export async function renderHome(mount) {
     ])] : [])
   ]);
   nodes.push(topbar);
-
-  // ===== 搜索胶囊 =====
-  nodes.push(el('a', { class: 'home-search', href: '#/transactions', 'aria-label': '搜索账单' }, [
-    el('svg', { viewBox: '0 0 24 24', width: '21', height: '21', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true', html: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>' }),
-    el('span', { text: '搜索账单' })
-  ]));
 
   // ===== 首次使用引导 =====
   if (!activeAccounts.length || !activeCategories.length) {
@@ -122,19 +113,23 @@ export async function renderHome(mount) {
     const gaugeCard = el('section', { class: 'gauge-card', 'aria-label': '预算仪表，左右滑动切换月份' });
 
     async function renderGauge() {
-      const ym = monthKeyByOffset(gaugeOffset);
+      const revision = ++gaugeRevision;
+      const offset = gaugeOffset;
+      const ym = monthKeyByOffset(offset);
       const { start, end, daysInMonth } = monthRange(ym);
       const [sum, budget] = await Promise.all([
         monthlySummary(ym, null),
         getBudget(ym)
       ]);
+      if (disposed || revision !== gaugeRevision) return;
       const spent = sum.expense;
       const limit = budget ? budget.limit : 0;
-      const remaining = limit - spent;
+      const remainingCents = Math.round(limit * 100) - Math.round(spent * 100);
+      const remaining = remainingCents / 100;
       const over = limit > 0 && remaining < 0;
       const pct = limit > 0 ? Math.min(140, Math.round(spent / limit * 100)) : 0;
 
-      const isCurrent = gaugeOffset === 0;
+      const isCurrent = offset === 0;
       let daysLeft = 0;
       if (isCurrent) {
         const now = new Date();
@@ -142,7 +137,9 @@ export async function renderHome(mount) {
       }
 
       gaugeCard.innerHTML = '';
-      const flag = limit > 0 ? (over ? '预算已超支 🚩' : '本月预算 🚩') : '还没设预算 🚩';
+      gaugeCard.classList.toggle('is-empty', limit <= 0);
+      const monthLabel = isCurrent ? '本月' : ym.replace('-', '年') + '月';
+      const flag = limit > 0 ? (over ? monthLabel + '预算已超支' : monthLabel + '预算') : monthLabel + '未设预算';
       const title = el('div', { class: 'gauge-title', text: flag });
       const range = el('div', { class: 'gauge-range', text: shortRange(ym) });
 
@@ -163,22 +160,20 @@ export async function renderHome(mount) {
           leftLabel = '还可消费';
         }
         if (isCurrent) {
-          const perDay = Math.max(0, remaining) / daysLeft;
-          centerVal = over ? '0' : formatMoney(Math.floor(perDay * 100) / 100);
+          centerVal = over ? '0' : formatMoney(Math.floor(Math.max(0, remainingCents) / daysLeft) / 100);
           centerLabel = over ? '剩余日均可消费' : '剩余日均可消费';
         } else {
-          centerVal = formatMoney(Math.floor(spent / daysInMonth * 100) / 100);
+          centerVal = formatMoney(Math.floor(Math.round(spent * 100) / daysInMonth) / 100);
           centerLabel = '日均支出';
         }
       } else {
         leftVal = formatMoney(sum.income);
-        leftLabel = '本月收入';
+        leftLabel = isCurrent ? '本月收入' : '该月收入';
         centerVal = '—';
         centerLabel = '去设置预算 ›';
-        gaugeCard.classList.add('is-empty');
       }
       const rightVal = formatMoney(spent);
-      const rightLabel = '本月已消费';
+      const rightLabel = isCurrent ? '本月已消费' : '该月已消费';
 
       const left = el('div', { class: 'gauge-col' }, [
         el('div', { class: 'gv' + (over ? ' over' : ''), text: leftVal }),
@@ -196,7 +191,7 @@ export async function renderHome(mount) {
 
       const dots = el('div', { class: 'gauge-dots' }, [-2, -1, 0].map(off =>
         el('button', {
-          class: 'g-dot' + (gaugeOffset === off ? ' on' : ''), type: 'button',
+          class: 'g-dot' + (offset === off ? ' on' : ''), type: 'button',
           'aria-label': off === 0 ? '本月' : `${-off} 个月前`,
           onclick: (e) => { e.stopPropagation(); gaugeOffset = off; renderGauge(); }
         })
@@ -208,13 +203,14 @@ export async function renderHome(mount) {
         el('span', { text: `支出 ${formatMoney(sum.expense)}` }),
         el('span', { class: 'g-sep', text: '·' }),
         el('span', { text: `结余 ${formatMoney(sum.balance)}` }),
-        el('a', { class: 'g-more', href: '#/stats', text: '统计 ›', onclick: (e) => e.stopPropagation() })
+        el('a', { class: 'g-more', href: '#/stats?' + new URLSearchParams({ period: 'month', type: 'expense', from: start, to: end }), text: '统计 ›', onclick: (e) => e.stopPropagation() })
       ]);
 
       gaugeCard.append(title, range, svg, cols, dots, foot);
+      gaugeCard.dataset.month = ym;
     }
 
-    renderGauge();
+    await renderGauge();
 
     // 卡上左右滑切换月份（阻止冒泡，避免触发页面级左滑进账户）
     let sx = 0, sy = 0, sActive = false;
@@ -234,7 +230,7 @@ export async function renderHome(mount) {
         if (next !== gaugeOffset) { gaugeOffset = next; renderGauge(); }
       }
     }, { passive: true });
-    gaugeCard.addEventListener('click', () => { location.hash = '#/budget'; });
+    gaugeCard.addEventListener('click', () => { location.hash = '#/budget?month=' + gaugeCard.dataset.month; });
 
     nodes.push(gaugeCard);
   }
@@ -243,11 +239,12 @@ export async function renderHome(mount) {
   if (!localStorage.getItem('swipe_hint_shown')) {
     const hint = el('div', { class: 'swipe-hint', text: '← 左滑管理账户' });
     nodes.push(hint);
-    setTimeout(() => {
+    timers.push(setTimeout(() => {
+      if (disposed) return;
       localStorage.setItem('swipe_hint_shown', '1');
       if (hint.parentNode) hint.classList.add('fade-out');
-      setTimeout(() => { if (hint.parentNode) hint.parentNode.removeChild(hint); }, 500);
-    }, 3000);
+      timers.push(setTimeout(() => { if (hint.parentNode) hint.parentNode.removeChild(hint); }, 500));
+    }, 3000));
   }
 
   // ===== 日期分组流水 =====
@@ -277,11 +274,12 @@ export async function renderHome(mount) {
       }
       const g = groupMap.get(t.date);
       g.items.push(t);
-      if (t.type === 'income') g.income += t.amount;
-      else if (t.type === 'expense') g.expense += t.amount;
     });
 
     groups.forEach(g => {
+      const totals = recentPage.days[g.date];
+      g.income = totals.incomeCents / 100;
+      g.expense = totals.expenseCents / 100;
       const headerRight = [];
       if (g.income > 0) headerRight.push(el('span', { class: 'day-income', text: '收入' + formatMoney(g.income) }));
       if (g.expense > 0) headerRight.push(el('span', { class: 'day-expense', text: '支出' + formatMoney(g.expense) }));
@@ -312,17 +310,20 @@ export async function renderHome(mount) {
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
         }
-        const item = el('button', { class: 'tx-item tx-item-button', type: 'button', dataset: { id: t.id }, 'aria-label': `编辑 ${nameText} ${amountText}` }, [
+        const item = el('button', { class: 'tx-item tx-item-button', type: 'button', dataset: { id: t.id }, 'aria-label': `查看 ${nameText} ${amountText}` }, [
           el('div', { class: 'tx-left' }, [
             iconNode,
-            el('span', { class: 'name', text: nameText })
+            el('span', { class: 'tx-copy' }, [
+              el('span', { class: 'name', text: nameText }),
+              t.date > todayDateOnly() ? el('span', { class: 'future-date', text: '未来日期' }) : null
+            ])
           ]),
           el('div', { class: 'tx-right' }, [
             el('span', { class: 'amount ' + amountClass, text: amountText }),
             ...(channelText ? [el('span', { class: 'chan-pill', text: channelText })] : [])
           ])
         ]);
-        item.addEventListener('click', () => { location.hash = '#/edit/' + t.id; });
+        item.addEventListener('click', () => openTransaction(t.id));
         list.appendChild(item);
       });
     });
@@ -359,14 +360,11 @@ export async function renderHome(mount) {
   mount.addEventListener('touchend', onEnd, { passive: true });
 
   return () => {
+    disposed = true; gaugeRevision++;
+    timers.forEach(clearTimeout);
     mount.removeEventListener('touchstart', onStart);
     mount.removeEventListener('touchend', onEnd);
   };
-}
-
-function currentMonthSafe() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export function invalidateCategoryCache() { _categoriesCache = null; }

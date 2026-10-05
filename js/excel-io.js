@@ -27,16 +27,12 @@ const TYPE_KEYWORDS = {
   transfer: ['转账', '内部转账', 'transfer', 'move']
 };
 
-function normalizeType(raw) {
-  if (!raw) return 'expense';
-  const s = String(raw).trim().toLowerCase();
+export function normalizeType(raw) {
+  const s = String(raw ?? '').trim().toLowerCase().replace(/（/g, '(').replace(/）/g, ')');
   for (const [type, keys] of Object.entries(TYPE_KEYWORDS)) {
-    if (keys.some(k => s.includes(k.toLowerCase()))) return type;
+    if (keys.some(k => s === k.toLowerCase())) return type;
   }
-  // 默认：含"支"或"出"算支出，含"收"或"入"且不含"转"算收入
-  if (s.includes('支') || s.includes('出')) return 'expense';
-  if (s.includes('收') || s.includes('入')) return 'income';
-  return 'expense';
+  return null;
 }
 
 // 把日期字符串（支持 YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:mm / Excel 数字序列号）统一成 YYYY-MM-DD
@@ -222,7 +218,7 @@ export async function previewExcelImport(file) {
       detectedAccountsMap.set(toName, { name: toName, exists: false, currentOpening: 0 });
     }
     // 收集分类名（用于预览）
-    if (type !== 'transfer' && rawCat) {
+    if (type && type !== 'transfer' && rawCat) {
       const catName = String(rawCat).trim();
       const key = type + '|' + catName;
       if (!detectedCategoriesMap.has(key)) {
@@ -232,6 +228,8 @@ export async function previewExcelImport(file) {
 
     parsedRows.push({
       type,
+      rowNumber: Number.isInteger(r.__rowNum__) ? r.__rowNum__ + 1 : i + 2,
+      rawType: String(rawType ?? '').trim(),
       amountCents,
       rawCat: type !== 'transfer' ? String(rawCat || '').trim() : '',
       rawFrom: fromName,
@@ -246,6 +244,7 @@ export async function previewExcelImport(file) {
     sheetName,
     totalRows: rows.length,
     parsedRows,
+    needsConfirmation: parsedRows.filter(row => !row.type),
     skipped,
     detectedAccounts: Array.from(detectedAccountsMap.values()),
     detectedCategories: Array.from(detectedCategoriesMap.values()),
@@ -259,6 +258,9 @@ export async function previewExcelImport(file) {
 // openingBalances: Map<accountName, number>
 export async function importParsedData(preview, options = {}) {
   if (options.mode === 'replace') throw new Error('Excel 导入仅支持安全合并；如需替换请使用 JSON 备份恢复');
+  if (preview.parsedRows.some(row => !['expense', 'income', 'transfer'].includes(row.type))) {
+    throw new Error('还有未确认的记账类型，请先处理“需要确认”列表');
+  }
   const result = await importExternalRows(preview.parsedRows, {
     openingBalances: options.openingBalances || new Map()
   });
@@ -270,6 +272,27 @@ export async function importParsedData(preview, options = {}) {
     newAccounts: result.newAccounts,
     newCategories: result.newCategories
   };
+}
+
+export async function resolveExcelTypes(preview, choices) {
+  const parsedRows = preview.parsedRows.map(row => {
+    if (row.type) return row;
+    const type = choices.get(row.rowNumber);
+    if (!['expense', 'income', 'transfer'].includes(type)) return row;
+    return { ...row, type, rawCat: type === 'transfer' ? '' : row.rawCat };
+  });
+  const existingCategories = await listCategories(null, { includeArchived: true });
+  const categoryMap = new Map(existingCategories.map(category => [
+    category.type + '|' + category.name, { name: category.name, type: category.type, exists: true }
+  ]));
+  for (const row of parsedRows) {
+    if (!row.type || row.type === 'transfer' || !row.rawCat) continue;
+    const key = row.type + '|' + row.rawCat;
+    if (!categoryMap.has(key)) categoryMap.set(key, { name: row.rawCat, type: row.type, exists: false });
+  }
+  const detectedCategories = [...categoryMap.values()];
+  return { ...preview, parsedRows, needsConfirmation: parsedRows.filter(row => !row.type),
+    detectedCategories, newCategoriesCount: detectedCategories.filter(category => !category.exists).length };
 }
 
 // 向后兼容：保留 importFromExcel 但默认走预扫描流程

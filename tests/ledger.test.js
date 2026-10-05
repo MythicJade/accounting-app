@@ -20,6 +20,40 @@ const expense = (patch = {}) => ({ type: 'expense', amount: '10.00', date, accou
 const clone = value => structuredClone(value);
 const legacy = value => { const copy = clone(value); delete copy.checksum; copy.version = 3; copy.schemaVersion = 5; copy.transactions.forEach(t => delete t.uid); return copy; };
 
+test('future transactions stay in history but current balances and actual totals stop at today', async () => {
+  await ledger.addTransaction(expense());
+  const future = '2099-12-15';
+  await ledger.addTransaction({ type: 'income', amount: '500', date: future, accountId: cash.id, categoryId: salary.id });
+  await ledger.transferMoney({ fromId: cash.id, toId: bank.id, amount: '40', date: future });
+  await addAccount({ name: '未来期初', openingBalance: 99, openingDate: future });
+  assert.equal(await ledger.getAccountBalance(cash.id), 90);
+  assert.equal((await ledger.getAllAccountBalances()).get(cash.id), 90);
+  assert.equal(await ledger.getTotalBalance(), 590);
+  assert.equal((await ledger.getAssetsSummary()).netAssets, 590);
+  assert.equal(await ledger.getAccountBalance(cash.id, future), 550);
+  assert.equal(await ledger.getTotalBalance(future), 1189);
+  assert.equal((await ledger.getAllTransactions()).length, 3);
+  assert.deepEqual(await ledger.monthlySummary('2099-12'), { income: 0, expense: 0, balance: 0 });
+  const page = await ledger.listTransactions({ returnPage: true, limit: 1 });
+  assert.equal(page.total, 3);
+  assert.equal(page.incomeCents, 0);
+  assert.equal(page.days[future].incomeCents, 50000);
+});
+
+test('full daily and filter totals are independent of the 50/200 record page boundaries', async () => {
+  await ledger.bulkPutTransactions(Array.from({ length: 205 }, () => expense({ amount: '1.01' })));
+  await ledger.addTransaction(expense({ accountId: bank.id, amount: '10' }));
+  for (const [offset, limit] of [[0, 50], [200, 50], [0, 200]]) {
+    const page = await ledger.listTransactions({ accountId: cash.id, categoryId: food.id, returnPage: true, offset, limit });
+    assert.equal(page.days[date].expenseCents, 20705);
+    assert.equal(page.expenseCents, 20705);
+    assert.equal(page.total, 205);
+  }
+  assert.equal((await ledger.listTransactions({ amountMinCents: 101, amountMaxCents: 101, limit: 200, returnPage: true })).total, 205);
+  assert.equal((await ledger.listTransactions({ amountMinCents: 1000, amountMaxCents: 1000, limit: 200 })).length, 1);
+  assert.deepEqual(await ledger.listTransactions({ dateFrom: '2026-02-01', dateTo: '2026-01-01' }), []);
+});
+
 test('editing a hydrated transaction changes cents, type and balances', async () => {
   const id = await ledger.addTransaction(expense());
   const uid = (await ledger.getTransaction(id)).uid;

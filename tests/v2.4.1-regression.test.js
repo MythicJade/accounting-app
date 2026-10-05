@@ -10,7 +10,7 @@ test('v2.4.1 keeps two hundred recent transactions and avoids category autofocus
   const home = read('js/views/home.js');
   const categories = read('js/views/categories.js');
 
-  assert.match(home, /listTransactions\(\{\s*limit:\s*200\s*\}\)/);
+  assert.match(home, /listTransactions\(\{\s*limit:\s*200,\s*returnPage:\s*true\s*\}\)/);
   assert.doesNotMatch(categories, /autofocus/i);
   assert.doesNotMatch(categories, /nameInput\.focus\s*\(/);
 });

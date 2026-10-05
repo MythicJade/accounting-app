@@ -301,6 +301,10 @@ function hitIndexAt(canvas, clientX) {
 function bindPointerInteraction(canvas) {
   if (canvas._chartPointerBound) return;
   canvas._chartPointerBound = true;
+  const controller = new AbortController();
+  canvas._chartPointerController = controller;
+  const listen = (target, type, listener, options = {}) =>
+    target.addEventListener(type, listener, { ...options, signal: controller.signal });
 
   const DIR_LOCK_SLOP = 6; // 判定滑动方向的位移阈值(px)
   const st = {
@@ -378,18 +382,18 @@ function bindPointerInteraction(canvas) {
 
   // touch：stopPropagation 避免页面级手势（右滑返回等）被误触；
   // move 为非被动监听以便横向 scrub 时 preventDefault。
-  canvas.addEventListener('touchstart', (e) => {
+  listen(canvas, 'touchstart', (e) => {
     e.stopPropagation();
     const t = e.touches && e.touches[0];
     if (t) beginTouch(t);
   }, { passive: true });
-  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-  canvas.addEventListener('touchend', (e) => { e.stopPropagation(); finalizeTouch(); }, { passive: true });
-  canvas.addEventListener('touchcancel', abandonTouch, { passive: true });
+  listen(canvas, 'touchmove', onTouchMove, { passive: false });
+  listen(canvas, 'touchend', (e) => { e.stopPropagation(); finalizeTouch(); }, { passive: true });
+  listen(canvas, 'touchcancel', abandonTouch, { passive: true });
 
   // 鼠标：hover 预览；按下拖动等同横向 scrub
   const beginMouse = (clientX) => { st.active = true; st.locked = true; st.horizontal = true; st.startX = clientX; st.startY = clientX; st.last = -1; };
-  canvas.addEventListener('mousedown', (e) => { e.stopPropagation(); beginMouse(e.clientX); const i = hitIndexAt(canvas, e.clientX); if (i != null) fireScrub(i); });
+  listen(canvas, 'mousedown', (e) => { e.stopPropagation(); beginMouse(e.clientX); const i = hitIndexAt(canvas, e.clientX); if (i != null) fireScrub(i); });
   const onMouseMove = (e) => {
     if (st.active && st.horizontal) {
       const idx = hitIndexAt(canvas, e.clientX);
@@ -399,9 +403,18 @@ function bindPointerInteraction(canvas) {
       if (idx != null) fireScrub(idx);
     }
   };
-  canvas.addEventListener('mousemove', (e) => { e.stopPropagation(); onMouseMove(e); });
-  window.addEventListener('mousemove', (e) => { if (st.active) onMouseMove(e); });
-  window.addEventListener('mouseup', () => finalizeTouch());
+  listen(canvas, 'mousemove', (e) => { e.stopPropagation(); onMouseMove(e); });
+  listen(window, 'mousemove', (e) => { if (st.active) onMouseMove(e); });
+  listen(window, 'mouseup', () => finalizeTouch());
+}
+
+export function disposeLineChart(canvas) {
+  if (!canvas) return;
+  canvas._chartPointerController?.abort();
+  canvas._chartPointerController = null;
+  canvas._chartPointerBound = false;
+  canvas._chartOnSelect = canvas._chartOnScrub = null;
+  canvas._chartHit = null;
 }
 
 /* ============================ 绘制入口 ============================ */

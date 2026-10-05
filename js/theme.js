@@ -58,6 +58,7 @@ export function setThemeKey(key) {
   const k = normalizeThemeKey(key);
   try { localStorage.setItem(THEME_STORAGE_KEY, k); } catch (e) { /* 隐私模式下忽略 */ }
   applyTheme(k);
+  window.dispatchEvent(new Event('accounting-theme-change'));
   return k;
 }
 
@@ -87,4 +88,24 @@ export function themePalette() {
 export function cssVar(name, fallback = '') {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
+}
+
+// Category identity is its saved color, never its rank. Adapt only readability.
+export function readableCategoryColor(color, dark = getThemeKey() === 'dark') {
+  const hex = /^#[0-9a-f]{6}$/i.test(color) ? color : '#8B8E98';
+  let rgb = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+  const luminance = values => values.map(value => {
+    const n = value / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+  }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  const background = dark ? luminance([32, 35, 47]) : 1;
+  for (let step = 0; step < 30; step++) {
+    const light = luminance(rgb);
+    if ((Math.max(light, background) + 0.05) / (Math.min(light, background) + 0.05) >= 4.5) break;
+    rgb = rgb.map(value => Math.round(dark ? value + (255 - value) * 0.1 : value * 0.9));
+  }
+  return '#' + rgb.map(value => value.toString(16).padStart(2, '0')).join('');
+}
+
+export function categoryColorStyle(color) {
+  return `--category-light:${readableCategoryColor(color, false)};--category-dark:${readableCategoryColor(color, true)};color:var(--category-ink);background:${/^#[0-9a-f]{6}$/i.test(color) ? color : '#8B8E98'}18`;
 }

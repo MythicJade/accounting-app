@@ -4,6 +4,7 @@ import { getAllAccountBalances, getAssetsSummary, transferMoney } from '../store
 import { formatMoney, todayStr } from '../format.js';
 import { toast, confirmDialog, showModal, el } from '../ui.js';
 import { router } from '../router.js';
+import { categoryIconNode } from '../category-icons.js';
 
 export async function renderAccounts(mount) {
   const [accounts, balances, summary] = await Promise.all([
@@ -96,7 +97,7 @@ export async function renderAccounts(mount) {
           style: `--account-color:${acc.color};--account-ink:${contrastInk(acc.color)}`,
           onclick: () => location.hash = '#/accounts/' + acc.id
         }, [
-          el('div', { class: 'mini-icon' }, [document.createTextNode(acc.icon)]),
+          el('div', { class: 'mini-icon' }, [categoryIconNode(acc, { size: 26 })]),
           el('div', { class: 'mini-copy' }, [
             el('div', { class: 'mini-name', text: acc.name }),
             el('div', { class: 'mini-kind', text: acc.archived ? '历史账户' : (acc.type === 'credit' ? '信用账户' : '资金账户') })
@@ -146,7 +147,7 @@ export async function renderAccounts(mount) {
       iconGrid.innerHTML = '';
       icons.forEach(ic => {
         const item = el('button', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), type: 'button', 'aria-label': `选择图标 ${ic}`, onclick: () => { selectedIcon = ic; renderIcons(); } }, [
-          el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [document.createTextNode(ic)]),
+          el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [categoryIconNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
         iconGrid.appendChild(item);

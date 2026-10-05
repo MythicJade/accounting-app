@@ -4,12 +4,16 @@ import { listTransactions, getAccountBalance, sumByType, monthlyAccountTrend } f
 import { getAccountsMap } from '../accounts.js';
 import { listCategories } from '../categories.js';
 import { formatMoney, todayStr } from '../format.js';
-import { drawLineChart } from '../charts/line-chart.js';
+import { drawLineChart, disposeLineChart } from '../charts/line-chart.js';
 import { categoryIconNode } from '../category-icons.js';
 import { toast, confirmDialog, el } from '../ui.js';
 import { router } from '../router.js';
+import { openTransaction } from '../navigation.js';
+import { todayDateOnly } from '../date-only.js';
+import { categoryColorStyle } from '../theme.js';
 
-export async function renderAccountDetail(mount, { id }) {
+export async function renderAccountDetail(mount, { id, query }) {
+  let disposed = false, revision = 0, frame = 0, chartCanvas;
   const acc = await getAccount(id);
   if (!acc) {
     mount.appendChild(el('div', { class: 'empty' }, [el('p', { text: '账户不存在' })]));
@@ -18,14 +22,14 @@ export async function renderAccountDetail(mount, { id }) {
 
   const balance = await getAccountBalance(id);
 
-  let activeTab = 'stats'; // 'stats' | 'edit'
-  let year = String(new Date().getFullYear());
+  let activeTab = query?.get('tab') === 'edit' ? 'edit' : 'stats';
+  let year = /^\d{4}$/.test(query?.get('year')) ? query.get('year') : String(new Date().getFullYear());
 
   const topbar = el('header', { class: 'topbar' }, [
     el('button', { class: 'back', type: 'button', 'aria-label': '返回账户管理', onclick: () => location.hash = '#/accounts' }, [
       el('svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'currentColor', html: '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' })
     ]),
-    el('h1', { text: acc.icon + ' ' + acc.name }),
+    el('h1', {}, [categoryIconNode(acc, { size: 22 }), document.createTextNode(' ' + acc.name)]),
     el('button', { class: 'btn-text', onclick: onArchiveToggle, style: acc.archived ? 'color:var(--c-primary);' : 'color:var(--warning);' }, [el('span', { text: acc.archived ? '恢复' : '归档' })])
   ]);
 
@@ -53,7 +57,8 @@ export async function renderAccountDetail(mount, { id }) {
   mount.append(topbar, balanceCard, tabSwitcher, content);
 
   // 初始渲染
-  renderTab();
+  updateTabButtons();
+  await renderTab();
 
   statsBtn.addEventListener('click', () => { activeTab = 'stats'; updateTabButtons(); renderTab(); });
   editBtn.addEventListener('click', () => { activeTab = 'edit'; updateTabButtons(); renderTab(); });
@@ -64,30 +69,34 @@ export async function renderAccountDetail(mount, { id }) {
   }
 
   async function renderTab() {
+    const token = ++revision;
+    cancelAnimationFrame(frame); disposeLineChart(chartCanvas); chartCanvas = null;
+    router.replaceState(`#/accounts/${encodeURIComponent(id)}?year=${year}&tab=${activeTab}`);
     content.innerHTML = '';
     if (activeTab === 'stats') {
-      await renderStatsTab(content);
+      await renderStatsTab(content, token, year);
     } else {
       renderEditTab(content);
     }
   }
 
   // === 年度统计 tab ===
-  async function renderStatsTab(container) {
-    const yNum = Number(year);
-    const yearStart = year + '-01-01';
-    const yearEnd = year + '-12-31';
+  async function renderStatsTab(container, token, selectedYear) {
+    const yNum = Number(selectedYear);
+    const yearStart = selectedYear + '-01-01';
+    const yearEnd = selectedYear + '-12-31';
 
     // 年份导航
     const navRow = el('div', { class: 'between items-center range-nav', style: 'margin-bottom:12px;' }, [
       el('button', { class: 'range-btn', type: 'button', 'aria-label': '上一年', onclick: () => { year = String(yNum - 1); renderTab(); }, text: '‹' }),
-      el('span', { class: 'range-label', text: year + '年' }),
+      el('span', { class: 'range-label', text: selectedYear + '年' }),
       el('button', { class: 'range-btn', type: 'button', 'aria-label': '下一年', onclick: () => { year = String(yNum + 1); renderTab(); }, text: '›' })
     ]);
     container.appendChild(navRow);
 
     // 年度汇总（横排）
     const summary = await sumByType(yearStart, yearEnd, id);
+    if (disposed || token !== revision) return;
     const summaryRow = el('div', { class: 'stat-row', style: 'background:var(--bg);border-radius:12px;padding:12px;margin-bottom:12px;' }, [
       el('div', { class: 'stat-cell' }, [
         el('div', { class: 'stat-label', text: '收入' }),
@@ -108,30 +117,39 @@ export async function renderAccountDetail(mount, { id }) {
     const chartCard = el('section', { class: 'card chart-card' }, [
       el('div', { class: 'card-title', text: '账户余额趋势（按月）' })
     ]);
-    const canvas = el('canvas', { style: 'width:100%;height:200px;', role: 'img', tabindex: '0', 'aria-label': `${year}年${acc.name}账户余额趋势` });
+    const canvas = el('canvas', { style: 'width:100%;height:200px;', role: 'img', tabindex: '0', 'aria-label': `${selectedYear}年${acc.name}账户余额趋势` });
+    chartCanvas = canvas;
     chartCard.appendChild(canvas);
     container.appendChild(chartCard);
 
     // 计算每月末余额：包含期初日期与跨年度结转；未来月份留空
-    const allAccTx = await listTransactions({ accountId: id });
-    const lineData = await monthlyAccountTrend(id, yNum);
+    const [allAccTx, lineData, catMap, accountMap] = await Promise.all([
+      listTransactions({ accountId: id, dateFrom: yearStart, dateTo: yearEnd }),
+      monthlyAccountTrend(id, yNum), getCategoriesMap(), getAccountsMap()
+    ]);
+    if (disposed || token !== revision) return;
 
     let chartSelected = null;
-    const drawChartNow = () => drawLineChart(canvas, lineData, {
+    const drawChartNow = () => {
+      if (disposed || token !== revision) return;
+      drawLineChart(canvas, lineData, {
       color: acc.color,
       selected: chartSelected,
       onSelect: (idx) => { chartSelected = idx; drawChartNow(); },
       valueFormatter: (v) => formatMoney(v)
-    });
+      });
+    };
     // 延迟绘制（等 canvas 挂载）
-    requestAnimationFrame(drawChartNow);
+    frame = requestAnimationFrame(drawChartNow);
 
     // 本年交易列表
     const yearTxs = allAccTx.filter(t => t.date >= yearStart && t.date <= yearEnd);
     const txCard = el('section', { class: 'card' }, [
-      el('div', { class: 'card-title', text: '本年交易（' + yearTxs.length + '笔）' })
+      el('div', { class: 'card-title section-heading' }, [
+        el('span', { text: selectedYear + '年最近' + Math.min(20, yearTxs.length) + '笔 · 共' + yearTxs.length + '笔' }),
+        el('a', { class: 'text-sm', href: `#/accounts/${encodeURIComponent(id)}/transactions?year=${selectedYear}`, text: '查看全部 ›' })
+      ])
     ]);
-    const catMap = await getCategoriesMap();
     if (yearTxs.length === 0) {
       txCard.appendChild(el('div', { class: 'empty', style: 'padding:20px 0;' }, [el('p', { text: '本年暂无交易' })]));
     } else {
@@ -140,27 +158,28 @@ export async function renderAccountDetail(mount, { id }) {
       for (const t of recent) {
         let nameText, amountText, amountClass, iconNode;
         if (t.type === 'transfer') {
-          const fromName = await getAccountName(t.accountId);
-          const toName = await getAccountName(t.toAccountId);
+          const fromName = accountMap.get(t.accountId)?.name || '?';
+          const toName = accountMap.get(t.toAccountId)?.name || '?';
           nameText = fromName + ' → ' + toName;
           iconNode = el('div', { class: 'icon category-line-icon', style: 'background:var(--c-transfer-surface);color:var(--transfer);' }, [document.createTextNode('↔')]);
-          amountText = formatMoney(t.amount);
+          amountText = (t.toAccountId === id ? '转入 ' : '转出 ') + formatMoney(t.amount);
           amountClass = 'transfer';
         } else {
           const cat = catMap.get(t.categoryId) || { name: '未分类', icon: '❓', color: '#aeaeb2' };
           nameText = cat.name;
-          iconNode = el('div', { class: 'icon category-line-icon', style: `background:${cat.color}18;color:${cat.color}` }, [categoryIconNode(cat, { size: 20 })]);
+          iconNode = el('div', { class: 'icon category-line-icon', style: categoryColorStyle(cat.color) }, [categoryIconNode(cat, { size: 20 })]);
           amountText = (t.type === 'income' ? '+' : '-') + formatMoney(t.amount);
           amountClass = t.type;
         }
-        const item = el('button', { class: 'list-item list-item-button', type: 'button', onclick: () => { location.hash = '#/edit/' + t.id; } }, [
+        const item = el('button', { class: 'list-item list-item-button', type: 'button', onclick: () => openTransaction(t.id) }, [
           iconNode,
           el('div', { class: 'meta', style: 'flex:1;' }, [
             el('div', { class: 'between' }, [
               el('span', { class: 'text-sm', text: nameText }),
               el('span', { class: 'text-sm ' + amountClass, text: amountText })
             ]),
-            el('div', { class: 'text-sm text-3', style: 'margin-top:2px;', text: (t.note || '') + ' · ' + t.date.slice(5) })
+            el('div', { class: 'text-sm text-3', style: 'margin-top:2px;', text: (t.note || '') + ' · ' + t.date.slice(5) }),
+            t.date > todayDateOnly() ? el('span', { class: 'future-date', text: '未来日期' }) : null
           ])
         ]);
         list.appendChild(item);
@@ -197,7 +216,7 @@ export async function renderAccountDetail(mount, { id }) {
       iconGrid.innerHTML = '';
       icons.forEach(ic => {
         const item = el('button', { class: 'cat-item' + (selectedIcon === ic ? ' selected' : ''), type: 'button', 'aria-label': `选择图标 ${ic}`, onclick: () => { selectedIcon = ic; renderIcons(); } }, [
-          el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [document.createTextNode(ic)]),
+          el('div', { class: 'cat-icon', style: 'background:var(--fill-1);color:var(--text)' }, [categoryIconNode(ic)]),
           el('div', { class: 'cat-name', text: '' })
         ]);
         iconGrid.appendChild(item);
@@ -310,20 +329,10 @@ export async function renderAccountDetail(mount, { id }) {
 
   // 返回 cleanup，路由切换时移除监听
   return () => {
+    disposed = true; revision++; cancelAnimationFrame(frame); disposeLineChart(chartCanvas);
     mount.removeEventListener('touchstart', onStart);
     mount.removeEventListener('touchend', onEnd);
   };
-}
-
-// 获取账户名（缓存）
-let _accMapCache = null;
-async function getAccountName(id) {
-  if (!_accMapCache) {
-    const m = await getAccountsMap();
-    _accMapCache = m;
-  }
-  const a = _accMapCache.get(id);
-  return a ? a.name : '?';
 }
 
 async function getCategoriesMap() {
